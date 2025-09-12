@@ -12,7 +12,7 @@ import sys
 import asyncpg
 import httpx
 from dotenv import load_dotenv
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Any
 import logging
 import random
 import string
@@ -75,6 +75,11 @@ class EventCreationRequest(BaseModel):
     event_type: str = "mining"
     location_notes: Optional[str] = None
     session_notes: Optional[str] = None
+    # Event scheduling fields
+    scheduled_start_time: Optional[datetime] = None
+    auto_start_enabled: bool = False
+    tracked_channels: Optional[List[Dict[str, Any]]] = None  # [{"id": 123, "name": "Mining Alpha"}]
+    primary_channel_id: Optional[int] = None
 
 # Database connection pool
 db_pool = None
@@ -1831,6 +1836,11 @@ async def create_event(request: EventCreationRequest):
                 'started_at': datetime.now().isoformat(),
                 'ended_at': None,
                 'status': 'active',
+                'scheduled_start_time': request.scheduled_start_time.isoformat() if request.scheduled_start_time else None,
+                'auto_start_enabled': request.auto_start_enabled,
+                'tracked_channels': request.tracked_channels,
+                'primary_channel_id': request.primary_channel_id,
+                'event_status': 'live' if request.scheduled_start_time is None else 'scheduled',
                 'message': 'Event created successfully (mock mode)'
             }
         
@@ -1844,8 +1854,9 @@ async def create_event(request: EventCreationRequest):
             await conn.execute("""
                 INSERT INTO events (
                     event_id, event_type, event_name, organizer_name, organizer_id, 
-                    guild_id, started_at, status, location_notes, description, created_at
-                ) VALUES ($1, $2, $3, $4, $5, $6, NOW(), 'open', $7, $8, NOW())
+                    guild_id, started_at, status, location_notes, description, created_at,
+                    scheduled_start_time, auto_start_enabled, tracked_channels, primary_channel_id, event_status
+                ) VALUES ($1, $2, $3, $4, $5, $6, NOW(), 'open', $7, $8, NOW(), $9, $10, $11, $12, $13)
             """, 
                 event_id, 
                 request.event_type,
@@ -1854,13 +1865,20 @@ async def create_event(request: EventCreationRequest):
                 int(request.organizer_id) if request.organizer_id else 0,
                 int(request.guild_id),
                 request.location_notes,
-                request.session_notes
+                request.session_notes,
+                request.scheduled_start_time,
+                request.auto_start_enabled,
+                request.tracked_channels,
+                request.primary_channel_id,
+                'live' if request.scheduled_start_time is None else 'scheduled'
             )
             
             # Fetch the created event
             event_data = await conn.fetchrow("""
                 SELECT event_id, event_name, organizer_name, started_at, status, 
-                       location_notes, description, event_type, organizer_id
+                       location_notes, description, event_type, organizer_id,
+                       scheduled_start_time, auto_start_enabled, tracked_channels, 
+                       primary_channel_id, event_status
                 FROM events WHERE event_id = $1
             """, event_id)
             
@@ -1872,7 +1890,9 @@ async def create_event(request: EventCreationRequest):
                 "organizer_name": event_data["organizer_name"],
                 "organizer_id": str(event_data["organizer_id"]),
                 "location": event_data["location_notes"],
-                "notes": event_data["description"]
+                "notes": event_data["description"],
+                "tracked_channels": event_data["tracked_channels"],
+                "primary_channel_id": event_data["primary_channel_id"]
             }
             
             # Try to start Discord voice tracking (non-blocking)
@@ -2294,6 +2314,188 @@ async def refresh_uex_cache():
             "error": f"Cache refresh failed: {str(e)}",
             "timestamp": datetime.now().isoformat()
         }
+
+# =====================================================
+# EVENT SCHEDULING & MONITORING ENDPOINTS
+# =====================================================
+
+@app.get("/events/scheduled")
+async def get_scheduled_events():
+    """Get all scheduled events (event_status = 'scheduled')."""
+    try:
+        pool = await get_db_pool()
+        if pool is None:
+            # Return mock scheduled events when database is not available
+            mock_scheduled = [
+                {
+                    'event_id': 'sch-demo01',
+                    'event_name': 'Sunday Mining Session',
+                    'event_type': 'mining',
+                    'scheduled_start_time': (datetime.now() + timedelta(days=1)).isoformat(),
+                    'organizer_name': 'Demo User',
+                    'event_status': 'scheduled',
+                    'auto_start_enabled': True
+                }
+            ]
+            return {"events": mock_scheduled, "count": len(mock_scheduled)}
+        
+        async with pool.acquire() as conn:
+            events = await conn.fetch("""
+                SELECT event_id, event_name, event_type, organizer_name, 
+                       scheduled_start_time, auto_start_enabled, event_status,
+                       tracked_channels, primary_channel_id, created_at
+                FROM events 
+                WHERE event_status IN ('planned', 'scheduled')
+                ORDER BY scheduled_start_time ASC NULLS LAST, created_at DESC
+            """)
+            
+            return {
+                "events": [dict(event) for event in events],
+                "count": len(events)
+            }
+            
+    except Exception as e:
+        logger.error(f"Error fetching scheduled events: {e}")
+        raise HTTPException(status_code=500, detail="Failed to fetch scheduled events")
+
+@app.get("/events/{event_id}/live-metrics")
+async def get_event_live_metrics(event_id: str):
+    """Get real-time metrics for a live event."""
+    try:
+        pool = await get_db_pool()
+        if pool is None:
+            # Return mock live metrics when database is not available
+            return {
+                'event_id': event_id,
+                'current_participants': 5,
+                'total_unique_participants': 12,
+                'event_duration_minutes': 45,
+                'channel_breakdown': {
+                    'Mining Alpha': 3,
+                    'Mining Bravo': 2
+                },
+                'participant_list': [
+                    {'username': 'Pilot1', 'duration_minutes': 45, 'is_active': True},
+                    {'username': 'Pilot2', 'duration_minutes': 30, 'is_active': True}
+                ]
+            }
+        
+        async with pool.acquire() as conn:
+            # Get current event status
+            event_info = await conn.fetchrow("""
+                SELECT event_id, event_name, event_status, started_at
+                FROM events WHERE event_id = $1
+            """, event_id)
+            
+            if not event_info:
+                raise HTTPException(status_code=404, detail="Event not found")
+            
+            # Get current participant metrics
+            participant_stats = await conn.fetchrow("""
+                SELECT 
+                    COUNT(DISTINCT user_id) as total_participants,
+                    COUNT(DISTINCT CASE WHEN is_currently_active THEN user_id END) as active_participants
+                FROM participation 
+                WHERE event_id = $1
+            """, event_id)
+            
+            # Get channel breakdown
+            channel_breakdown = await conn.fetch("""
+                SELECT channel_name, COUNT(DISTINCT user_id) as participant_count
+                FROM participation 
+                WHERE event_id = $1 AND is_currently_active = true
+                GROUP BY channel_name
+            """, event_id)
+            
+            # Get individual participant list
+            participants = await conn.fetch("""
+                SELECT user_id, username, display_name, channel_name,
+                       session_duration_seconds, is_currently_active,
+                       joined_at, last_activity_update
+                FROM participation 
+                WHERE event_id = $1
+                ORDER BY is_currently_active DESC, session_duration_seconds DESC
+            """, event_id)
+            
+            # Calculate event duration
+            event_duration_minutes = 0
+            if event_info['started_at']:
+                duration_seconds = (datetime.now() - event_info['started_at']).total_seconds()
+                event_duration_minutes = int(duration_seconds / 60)
+            
+            return {
+                'event_id': event_id,
+                'event_name': event_info['event_name'],
+                'event_status': event_info['event_status'],
+                'event_duration_minutes': event_duration_minutes,
+                'current_participants': participant_stats['active_participants'] if participant_stats else 0,
+                'total_unique_participants': participant_stats['total_participants'] if participant_stats else 0,
+                'channel_breakdown': {row['channel_name']: row['participant_count'] for row in channel_breakdown},
+                'participant_list': [
+                    {
+                        'user_id': p['user_id'],
+                        'username': p['username'],
+                        'display_name': p['display_name'],
+                        'channel_name': p['channel_name'],
+                        'duration_minutes': int((p['session_duration_seconds'] or 0) / 60),
+                        'is_active': p['is_currently_active'],
+                        'last_activity': p['last_activity_update'].isoformat() if p['last_activity_update'] else None
+                    }
+                    for p in participants
+                ]
+            }
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error fetching live metrics for event {event_id}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to fetch live metrics")
+
+@app.get("/events/{event_id}/participant-history")
+async def get_event_participant_history(event_id: str, hours: int = 24):
+    """Get participant count history for graphing (from event_participant_snapshots)."""
+    try:
+        pool = await get_db_pool()
+        if pool is None:
+            # Return mock participant history
+            now = datetime.now()
+            mock_history = []
+            for i in range(0, hours * 6):  # Every 10 minutes
+                timestamp = now - timedelta(minutes=i * 10)
+                mock_history.append({
+                    'timestamp': timestamp.isoformat(),
+                    'total_participants': random.randint(3, 15),
+                    'active_participants': random.randint(1, 10)
+                })
+            return {'history': mock_history[::-1], 'event_id': event_id}
+        
+        async with pool.acquire() as conn:
+            # Get participant snapshots for the last N hours
+            cutoff_time = datetime.now() - timedelta(hours=hours)
+            
+            snapshots = await conn.fetch("""
+                SELECT snapshot_time, total_participants, active_participants, channel_breakdown
+                FROM event_participant_snapshots
+                WHERE event_id = $1 AND snapshot_time >= $2
+                ORDER BY snapshot_time ASC
+            """, event_id, cutoff_time)
+            
+            return {
+                'event_id': event_id,
+                'history': [
+                    {
+                        'timestamp': snap['snapshot_time'].isoformat(),
+                        'total_participants': snap['total_participants'],
+                        'active_participants': snap['active_participants'],
+                        'channel_breakdown': snap['channel_breakdown']
+                    }
+                    for snap in snapshots
+                ]
+            }
+            
+    except Exception as e:
+        logger.error(f"Error fetching participant history for event {event_id}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to fetch participant history")
 
 if __name__ == "__main__":
     import uvicorn
