@@ -75,11 +75,7 @@ async def get_db_pool():
     """Get database connection pool."""
     global db_pool
     if db_pool is None:
-        try:
-            db_pool = await asyncpg.create_pool(DATABASE_URL)
-        except Exception as e:
-            logger.warning(f"Database connection failed in get_db_pool: {e}")
-            return None
+        db_pool = await asyncpg.create_pool(DATABASE_URL)
     return db_pool
 
 @app.on_event("startup")
@@ -157,32 +153,6 @@ async def get_events():
     """Get all mining events from database."""
     try:
         pool = await get_db_pool()
-        if pool is None:
-            # Return mock data when database is not available
-            from datetime import datetime, timedelta
-            return [
-                {
-                    'event_id': 'evt_001',
-                    'event_name': 'Sunday Mining Operation',
-                    'event_type': 'mining',
-                    'organizer_name': 'CommanderRed',
-                    'started_at': (datetime.now() - timedelta(hours=2)).isoformat(),
-                    'ended_at': None,
-                    'total_duration_minutes': 120,
-                    'participant_count': 8
-                },
-                {
-                    'event_id': 'evt_002',
-                    'event_name': 'Salvage Operation Alpha',
-                    'event_type': 'salvage',
-                    'organizer_name': 'SalvageKing',
-                    'started_at': (datetime.now() - timedelta(days=1)).isoformat(),
-                    'ended_at': (datetime.now() - timedelta(days=1, hours=-3)).isoformat(),
-                    'total_duration_minutes': 180,
-                    'participant_count': 6
-                }
-            ]
-        
         async with pool.acquire() as conn:
             # Query events table with real-time participant count for live events
             events = await conn.fetch("""
@@ -230,24 +200,6 @@ async def get_event_participants(event_id: str):
     """Get participants for a specific event with real-time duration for live events."""
     try:
         pool = await get_db_pool()
-        if pool is None:
-            # Return mock data when database is not available
-            from datetime import datetime, timedelta
-            return [
-                {
-                    'user_id': 'user_001',
-                    'username': 'RedLegionMiner',
-                    'participation_minutes': 120,
-                    'participation_percentage': 40
-                },
-                {
-                    'user_id': 'user_002',
-                    'username': 'SpaceTrucker',
-                    'participation_minutes': 90,
-                    'participation_percentage': 30
-                }
-            ]
-        
         async with pool.acquire() as conn:
             participants = await conn.fetch("""
                 SELECT 
@@ -538,36 +490,6 @@ async def get_all_events():
     """Get all events with their associated payroll data for management."""
     try:
         pool = await get_db_pool()
-        if pool is None:
-            # Return mock data when database is not available
-            from datetime import datetime, timedelta
-            return [
-                {
-                    'event_id': 'evt_001',
-                    'event_name': 'Sunday Mining Operation',
-                    'event_type': 'mining',
-                    'organizer_name': 'CommanderRed',
-                    'started_at': (datetime.now() - timedelta(hours=2)).isoformat(),
-                    'ended_at': None,
-                    'total_duration_minutes': 120,
-                    'total_participants': 8,
-                    'status': 'active',
-                    'has_payroll': False
-                },
-                {
-                    'event_id': 'evt_002',
-                    'event_name': 'Salvage Operation Alpha',
-                    'event_type': 'salvage',
-                    'organizer_name': 'SalvageKing',
-                    'started_at': (datetime.now() - timedelta(days=1)).isoformat(),
-                    'ended_at': (datetime.now() - timedelta(days=1, hours=-3)).isoformat(),
-                    'total_duration_minutes': 180,
-                    'total_participants': 6,
-                    'status': 'completed',
-                    'has_payroll': True
-                }
-            ]
-        
         async with pool.acquire() as conn:
             # Get all events with payroll information
             events = await conn.fetch("""
@@ -798,370 +720,368 @@ def create_enhanced_pdf_header(story, event, styles):
     
     return story
 
-# @app.get("/admin/payroll-export/{event_id}")
-# TEMPORARILY DISABLED - PDF export has syntax errors
-#async def export_payroll_pdf_disabled(event_id: str):
-#    """Export payroll summary as PDF."""
-#    try:
-#        pool = await get_db_pool()
-#        async with pool.acquire() as conn:
-#            # Get event information
-#            event = await conn.fetchrow("""
-#                SELECT event_id, event_name, event_type, organizer_name, 
-#                       started_at, ended_at, total_participants, total_duration_minutes
-#                FROM events 
-#                WHERE event_id = $1
-#            """, event_id)
+@app.get("/admin/payroll-export/{event_id}")
+async def export_payroll_pdf(event_id: str):
+    """Export payroll summary as PDF."""
+    try:
+        pool = await get_db_pool()
+        async with pool.acquire() as conn:
+            # Get event information
+            event = await conn.fetchrow("""
+                SELECT event_id, event_name, event_type, organizer_name, 
+                       started_at, ended_at, total_participants, total_duration_minutes
+                FROM events 
+                WHERE event_id = $1
+            """, event_id)
             
-#            if not event:
-#                raise HTTPException(status_code=404, detail="Event not found")
+            if not event:
+                raise HTTPException(status_code=404, detail="Event not found")
             
-#            # Get payroll information
-#            payroll = await conn.fetchrow("""
-#                SELECT payroll_id, total_value_auec, calculated_by_name, calculated_at
-#                FROM payrolls 
-#                WHERE event_id = $1
-#            """, event_id)
+            # Get payroll information
+            payroll = await conn.fetchrow("""
+                SELECT payroll_id, total_value_auec, calculated_by_name, calculated_at
+                FROM payrolls 
+                WHERE event_id = $1
+            """, event_id)
             
-#            if not payroll:
-#                raise HTTPException(status_code=404, detail="Payroll not found for this event")
+            if not payroll:
+                raise HTTPException(status_code=404, detail="Payroll not found for this event")
             
-#            # Get individual payouts
-#            payouts = await conn.fetch("""
-#                SELECT username, participation_minutes, base_payout_auec, 
-#                       final_payout_auec, is_donor
-#                FROM payouts 
-#                WHERE payroll_id = $1
-#                ORDER BY final_payout_auec DESC
-#            """, payroll['payroll_id'])
+            # Get individual payouts
+            payouts = await conn.fetch("""
+                SELECT username, participation_minutes, base_payout_auec, 
+                       final_payout_auec, is_donor
+                FROM payouts 
+                WHERE payroll_id = $1
+                ORDER BY final_payout_auec DESC
+            """, payroll['payroll_id'])
             
-#            # Generate PDF
-#            pdf_buffer = io.BytesIO()
-#            doc = SimpleDocTemplate(pdf_buffer, pagesize=A4, topMargin=0.75*inch, 
-#                                  bottomMargin=0.75*inch, leftMargin=1*inch, rightMargin=1*inch)
-#            styles = getSampleStyleSheet()
-#            story = []
+            # Generate PDF
+            pdf_buffer = io.BytesIO()
+            doc = SimpleDocTemplate(pdf_buffer, pagesize=A4, topMargin=0.75*inch, 
+                                  bottomMargin=0.75*inch, leftMargin=1*inch, rightMargin=1*inch)
+            styles = getSampleStyleSheet()
+            story = []
             
-#            # Enhanced header with logo
-#            story = create_enhanced_pdf_header(story, event, styles)
+            # Enhanced header with logo
+            story = create_enhanced_pdf_header(story, event, styles)
             
-#            # Event Information
-#            event_info_style = ParagraphStyle(
-#                'EventInfo',
-#                parent=styles['Normal'],
-#                fontSize=10,
-#                spaceAfter=10
-#            )
+            # Event Information
+            event_info_style = ParagraphStyle(
+                'EventInfo',
+                parent=styles['Normal'],
+                fontSize=10,
+                spaceAfter=10
+            )
             
-#            event_info = f"""
-#            <b>Event:</b> {event['event_name'] or 'N/A'}<br/>
-#            <b>Event ID:</b> {event['event_id']}<br/>
-#            <b>Type:</b> {event['event_type'].title()}<br/>
-#            <b>Organizer:</b> {event['organizer_name']}<br/>
-#            <b>Duration:</b> {event['total_duration_minutes']} minutes ({event['total_duration_minutes'] // 60}h {event['total_duration_minutes'] % 60}m)<br/>
-#            <b>Participants:</b> {event['total_participants']}<br/>
-#            <b>Date:</b> {event['started_at'].strftime('%Y-%m-%d %H:%M') if event['started_at'] else 'N/A'}<br/>
-#            """
-#            story.append(Paragraph(event_info, event_info_style))
-#            story.append(Spacer(1, 20))
+            event_info = f"""
+            <b>Event:</b> {event['event_name'] or 'N/A'}<br/>
+            <b>Event ID:</b> {event['event_id']}<br/>
+            <b>Type:</b> {event['event_type'].title()}<br/>
+            <b>Organizer:</b> {event['organizer_name']}<br/>
+            <b>Duration:</b> {event['total_duration_minutes']} minutes ({event['total_duration_minutes'] // 60}h {event['total_duration_minutes'] % 60}m)<br/>
+            <b>Participants:</b> {event['total_participants']}<br/>
+            <b>Date:</b> {event['started_at'].strftime('%Y-%m-%d %H:%M') if event['started_at'] else 'N/A'}<br/>
+            """
+            story.append(Paragraph(event_info, event_info_style))
+            story.append(Spacer(1, 20))
             
-#            # Payroll Summary
-#            summary_style = ParagraphStyle(
-#                'SummaryHeader',
-#                parent=styles['Heading2'],
-#                fontSize=14,
-#                spaceAfter=10,
-#                textColor=colors.darkgreen
-#            )
-#            story.append(Paragraph("💰 Payroll Summary", summary_style))
+            # Payroll Summary
+            summary_style = ParagraphStyle(
+                'SummaryHeader',
+                parent=styles['Heading2'],
+                fontSize=14,
+                spaceAfter=10,
+                textColor=colors.darkgreen
+            )
+            story.append(Paragraph("💰 Payroll Summary", summary_style))
             
-#            total_payout = float(payroll['total_value_auec'])
-#            average_payout = total_payout / len(payouts) if payouts else 0
+            total_payout = float(payroll['total_value_auec'])
+            average_payout = total_payout / len(payouts) if payouts else 0
             
-#            summary_info = f"""
-#            <b>Total Payout:</b> {total_payout:,.0f} aUEC<br/>
-#            <b>Average Payout:</b> {average_payout:,.0f} aUEC<br/>
-#            <b>Calculated By:</b> {payroll['calculated_by_name']}<br/>
-#            <b>Calculated At:</b> {payroll['calculated_at'].strftime('%Y-%m-%d %H:%M') if payroll['calculated_at'] else 'N/A'}<br/>
-#            """
-#            story.append(Paragraph(summary_info, event_info_style))
-#            story.append(Spacer(1, 20))
+            summary_info = f"""
+            <b>Total Payout:</b> {total_payout:,.0f} aUEC<br/>
+            <b>Average Payout:</b> {average_payout:,.0f} aUEC<br/>
+            <b>Calculated By:</b> {payroll['calculated_by_name']}<br/>
+            <b>Calculated At:</b> {payroll['calculated_at'].strftime('%Y-%m-%d %H:%M') if payroll['calculated_at'] else 'N/A'}<br/>
+            """
+            story.append(Paragraph(summary_info, event_info_style))
+            story.append(Spacer(1, 20))
             
-#            # Individual Payouts Table
-#            payout_header_style = ParagraphStyle(
-#                'PayoutHeader',
-#                parent=styles['Heading2'],
-#                fontSize=14,
-#                spaceAfter=10,
-#                textColor=colors.darkred
-#            )
-#            story.append(Paragraph("👥 Individual Payouts", payout_header_style))
+            # Individual Payouts Table
+            payout_header_style = ParagraphStyle(
+                'PayoutHeader',
+                parent=styles['Heading2'],
+                fontSize=14,
+                spaceAfter=10,
+                textColor=colors.darkred
+            )
+            story.append(Paragraph("👥 Individual Payouts", payout_header_style))
             
-#            # Create table data
-#            table_data = [
-#                ['#', 'Participant', 'Time (min)', 'Base Payout (aUEC)', 'Final Payout (aUEC)', 'Status']
-#            ]
+            # Create table data
+            table_data = [
+                ['#', 'Participant', 'Time (min)', 'Base Payout (aUEC)', 'Final Payout (aUEC)', 'Status']
+            ]
             
-#            for i, payout in enumerate(payouts, 1):
-#                status = "Donor" if payout['is_donor'] else "Standard"
-#                table_data.append([
-#                    str(i),
-#                    str(payout['username']),
-#                    str(payout['participation_minutes']),
-#                    f"{float(payout['base_payout_auec']):,.0f}",
-#                    f"{float(payout['final_payout_auec']):,.0f}",
-#                    status
-#                ])
+            for i, payout in enumerate(payouts, 1):
+                status = "Donor" if payout['is_donor'] else "Standard"
+                table_data.append([
+                    str(i),
+                    str(payout['username']),
+                    str(payout['participation_minutes']),
+                    f"{float(payout['base_payout_auec']):,.0f}",
+                    f"{float(payout['final_payout_auec']):,.0f}",
+                    status
+                ])
             
-#            # Create table with enhanced styling
-#            table = Table(table_data, colWidths=[0.5*inch, 2*inch, 0.8*inch, 1.2*inch, 1.2*inch, 0.8*inch])
-#            table.setStyle(TableStyle([
-#                # Header styling
-#                ('BACKGROUND', (0, 0), (-1, 0), colors.Color(0.8, 0.2, 0.2)),  # Red Legion red
-#                ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
-#                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-#                ('FONTSIZE', (0, 0), (-1, 0), 11),
-#                ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
-#                ('VALIGN', (0, 0), (-1, 0), 'MIDDLE'),
-#                ('TOPPADDING', (0, 0), (-1, 0), 8),
-#                ('BOTTOMPADDING', (0, 0), (-1, 0), 8),
+            # Create table with enhanced styling
+            table = Table(table_data, colWidths=[0.5*inch, 2*inch, 0.8*inch, 1.2*inch, 1.2*inch, 0.8*inch])
+            table.setStyle(TableStyle([
+                # Header styling
+                ('BACKGROUND', (0, 0), (-1, 0), colors.Color(0.8, 0.2, 0.2)),  # Red Legion red
+                ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, 0), 11),
+                ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
+                ('VALIGN', (0, 0), (-1, 0), 'MIDDLE'),
+                ('TOPPADDING', (0, 0), (-1, 0), 8),
+                ('BOTTOMPADDING', (0, 0), (-1, 0), 8),
                 
-#                # Data rows styling
-#                ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
-#                ('FONTSIZE', (0, 1), (-1, -1), 9),
-#                ('ALIGN', (0, 1), (-1, -1), 'CENTER'),
-#                ('ALIGN', (1, 1), (1, -1), 'LEFT'),  # Left align usernames
-#                ('VALIGN', (0, 1), (-1, -1), 'MIDDLE'),
-#                ('TOPPADDING', (0, 1), (-1, -1), 6),
-#                ('BOTTOMPADDING', (0, 1), (-1, -1), 6),
+                # Data rows styling
+                ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
+                ('FONTSIZE', (0, 1), (-1, -1), 9),
+                ('ALIGN', (0, 1), (-1, -1), 'CENTER'),
+                ('ALIGN', (1, 1), (1, -1), 'LEFT'),  # Left align usernames
+                ('VALIGN', (0, 1), (-1, -1), 'MIDDLE'),
+                ('TOPPADDING', (0, 1), (-1, -1), 6),
+                ('BOTTOMPADDING', (0, 1), (-1, -1), 6),
                 
-#                # Alternating row colors
-#                ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.Color(0.97, 0.97, 0.97), colors.Color(0.92, 0.92, 0.92)]),
+                # Alternating row colors
+                ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.Color(0.97, 0.97, 0.97), colors.Color(0.92, 0.92, 0.92)]),
                 
-#                # Borders and grid
-#                ('GRID', (0, 0), (-1, -1), 0.5, colors.Color(0.6, 0.6, 0.6)),
-#                ('LINEBELOW', (0, 0), (-1, 0), 2, colors.Color(0.8, 0.2, 0.2)),  # Thick underline for header
+                # Borders and grid
+                ('GRID', (0, 0), (-1, -1), 0.5, colors.Color(0.6, 0.6, 0.6)),
+                ('LINEBELOW', (0, 0), (-1, 0), 2, colors.Color(0.8, 0.2, 0.2)),  # Thick underline for header
                 
-#                # Special formatting for status column
-#                ('TEXTCOLOR', (5, 1), (5, -1), colors.Color(0.2, 0.6, 0.2)),  # Green for status
-#            ])
-#            story.append(table)
+                # Special formatting for status column
+                ('TEXTCOLOR', (5, 1), (5, -1), colors.Color(0.2, 0.6, 0.2)),  # Green for status
+            ])
+            story.append(table)
             
-#            # Footer
-#            story.append(Spacer(1, 30))
-#            footer_style = ParagraphStyle(
-#                'Footer',
-#                parent=styles['Normal'],
-#                fontSize=8,
-#                textColor=colors.grey,
-#                alignment=1  # Center alignment
-#            )
-#            story.append(Paragraph("Generated by Red Legion Web Payroll System", footer_style))
-#            story.append(Paragraph(f"Export Date: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", footer_style))
+            # Footer
+            story.append(Spacer(1, 30))
+            footer_style = ParagraphStyle(
+                'Footer',
+                parent=styles['Normal'],
+                fontSize=8,
+                textColor=colors.grey,
+                alignment=1  # Center alignment
+            )
+            story.append(Paragraph("Generated by Red Legion Web Payroll System", footer_style))
+            story.append(Paragraph(f"Export Date: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", footer_style))
             
-#            # Build PDF
-#            doc.build(story)
-#            pdf_buffer.seek(0)
+            # Build PDF
+            doc.build(story)
+            pdf_buffer.seek(0)
             
-#            # Return PDF as response
-#            filename = f"payroll_{event['event_id']}.pdf"
-#            return Response(
-#                content=pdf_buffer.read(),
-#                media_type="application/pdf",
-#                headers={"Content-Disposition": f"attachment; filename={filename}"}
-#            )
+            # Return PDF as response
+            filename = f"payroll_{event['event_id']}.pdf"
+            return Response(
+                content=pdf_buffer.read(),
+                media_type="application/pdf",
+                headers={"Content-Disposition": f"attachment; filename={filename}"}
+            )
             
-#    except HTTPException:
-#        raise  # Re-raise HTTP exceptions
-#    except Exception as e:
-#        logger.error(f"Error generating PDF for {event_id}: {e}")
-#        raise HTTPException(status_code=500, detail=f"PDF generation error: {str(e)}")
+    except HTTPException:
+        raise  # Re-raise HTTP exceptions
+    except Exception as e:
+        logger.error(f"Error generating PDF for {event_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"PDF generation error: {str(e)}")
 
-## @app.post("/payroll/{event_id}/export-pdf")
-## TEMPORARILY DISABLED - PDF export has syntax errors
-#async def export_calculated_payroll_pdf_disabled(event_id: str, request: PayrollCalculationRequest):
-#    """Generate PDF from calculated payroll data without requiring database storage."""
-#    try:
-#        pool = await get_db_pool()
-#        async with pool.acquire() as conn:
-#            # Get event data
-#            event = await conn.fetchrow("""
-#                SELECT * FROM events WHERE event_id = $1
-#            """, event_id)
+@app.post("/payroll/{event_id}/export-pdf")
+async def export_calculated_payroll_pdf(event_id: str, request: PayrollCalculationRequest):
+    """Generate PDF from calculated payroll data without requiring database storage."""
+    try:
+        pool = await get_db_pool()
+        async with pool.acquire() as conn:
+            # Get event data
+            event = await conn.fetchrow("""
+                SELECT * FROM events WHERE event_id = $1
+            """, event_id)
             
-#            if not event:
-#                raise HTTPException(status_code=404, detail="Event not found")
+            if not event:
+                raise HTTPException(status_code=404, detail="Event not found")
             
-#            # Get participants (same as in calculate_payroll)
-#            participants = await conn.fetch("""
-#                SELECT user_id, COALESCE(display_name, username) as username, 
-#                       SUM(duration_minutes) as participation_minutes, 
-#                       (SUM(duration_minutes)::float / NULLIF((SELECT SUM(duration_minutes) FROM participation WHERE event_id = $1), 0) * 100)::int as participation_percentage
-#                FROM participation 
-#                WHERE event_id = $1
-#                GROUP BY user_id, COALESCE(display_name, username)
-#                ORDER BY SUM(duration_minutes) DESC
-#            """, event_id)
+            # Get participants (same as in calculate_payroll)
+            participants = await conn.fetch("""
+                SELECT user_id, COALESCE(display_name, username) as username, 
+                       SUM(duration_minutes) as participation_minutes, 
+                       (SUM(duration_minutes)::float / NULLIF((SELECT SUM(duration_minutes) FROM participation WHERE event_id = $1), 0) * 100)::int as participation_percentage
+                FROM participation 
+                WHERE event_id = $1
+                GROUP BY user_id, COALESCE(display_name, username)
+                ORDER BY SUM(duration_minutes) DESC
+            """, event_id)
             
-#            # Get UEX prices and calculate total value (same logic as calculate_payroll)
-#            uex_prices = await get_uex_prices()
-#            prices = request.custom_prices or uex_prices
-#            total_value = sum(quantity * prices.get(ore.upper(), 0) for ore, quantity in request.ore_quantities.items())
-#            total_scu = sum(quantity for quantity in request.ore_quantities.values())
+            # Get UEX prices and calculate total value (same logic as calculate_payroll)
+            uex_prices = await get_uex_prices()
+            prices = request.custom_prices or uex_prices
+            total_value = sum(quantity * prices.get(ore.upper(), 0) for ore, quantity in request.ore_quantities.items())
+            total_scu = sum(quantity for quantity in request.ore_quantities.values())
             
-#            # Calculate payouts with donation logic (same as calculate_payroll)
-#            donating_users = request.donating_users or []
-#            donating_user_ids = [str(user_id) for user_id in donating_users]
+            # Calculate payouts with donation logic (same as calculate_payroll)
+            donating_users = request.donating_users or []
+            donating_user_ids = [str(user_id) for user_id in donating_users]
             
-#            non_donating_participants = [p for p in participants if str(p['user_id']) not in donating_user_ids]
-#            donating_participants = [p for p in participants if str(p['user_id']) in donating_user_ids]
+            non_donating_participants = [p for p in participants if str(p['user_id']) not in donating_user_ids]
+            donating_participants = [p for p in participants if str(p['user_id']) in donating_user_ids]
             
-#            total_non_donating_minutes = sum(p['participation_minutes'] or 0 for p in non_donating_participants)
+            total_non_donating_minutes = sum(p['participation_minutes'] or 0 for p in non_donating_participants)
             
-#            payouts = []
+            payouts = []
             
-#            # Calculate payouts for non-donating participants
-#            if total_non_donating_minutes > 0:
-#                for participant in non_donating_participants:
-#                    participation_mins = participant['participation_minutes'] or 0
-#                    redistribution_percentage = participation_mins / total_non_donating_minutes
-#                    individual_payout = total_value * redistribution_percentage
+            # Calculate payouts for non-donating participants
+            if total_non_donating_minutes > 0:
+                for participant in non_donating_participants:
+                    participation_mins = participant['participation_minutes'] or 0
+                    redistribution_percentage = participation_mins / total_non_donating_minutes
+                    individual_payout = total_value * redistribution_percentage
                     
-#                    payouts.append({
-#                        'username': participant['username'],
-#                        'participation_minutes': participation_mins,
-#                        'base_payout_auec': total_value * ((participant['participation_percentage'] or 0) / 100),
-#                        'final_payout_auec': round(individual_payout, 2),
-#                        'is_donor': False
-#                    })
+                    payouts.append({
+                        'username': participant['username'],
+                        'participation_minutes': participation_mins,
+                        'base_payout_auec': total_value * ((participant['participation_percentage'] or 0) / 100),
+                        'final_payout_auec': round(individual_payout, 2),
+                        'is_donor': False
+                    })
             
-#            # Add donating participants with 0 payout
-#            for participant in donating_participants:
-#                base_payout = total_value * ((participant['participation_percentage'] or 0) / 100)
-#                payouts.append({
-#                    'username': participant['username'],
-#                    'participation_minutes': participant['participation_minutes'] or 0,
-#                    'base_payout_auec': base_payout,
-#                    'final_payout_auec': 0.0,
-#                    'is_donor': True
-#                })
+            # Add donating participants with 0 payout
+            for participant in donating_participants:
+                base_payout = total_value * ((participant['participation_percentage'] or 0) / 100)
+                payouts.append({
+                    'username': participant['username'],
+                    'participation_minutes': participant['participation_minutes'] or 0,
+                    'base_payout_auec': base_payout,
+                    'final_payout_auec': 0.0,
+                    'is_donor': True
+                })
             
-#            # Generate PDF using enhanced formatting
-#            pdf_buffer = io.BytesIO()
-#            doc = SimpleDocTemplate(pdf_buffer, pagesize=A4, topMargin=0.75*inch, 
-#                                  bottomMargin=0.75*inch, leftMargin=1*inch, rightMargin=1*inch)
-#            styles = getSampleStyleSheet()
-#            story = []
+            # Generate PDF using enhanced formatting
+            pdf_buffer = io.BytesIO()
+            doc = SimpleDocTemplate(pdf_buffer, pagesize=A4, topMargin=0.75*inch, 
+                                  bottomMargin=0.75*inch, leftMargin=1*inch, rightMargin=1*inch)
+            styles = getSampleStyleSheet()
+            story = []
             
-#            # Enhanced header with logo
-#            story = create_enhanced_pdf_header(story, event, styles)
+            # Enhanced header with logo
+            story = create_enhanced_pdf_header(story, event, styles)
             
-#            # Event Information
-#            event_info_style = ParagraphStyle(
-#                'EventInfo',
-#                parent=styles['Normal'],
-#                fontSize=10,
-#                spaceAfter=10
-#            )
+            # Event Information
+            event_info_style = ParagraphStyle(
+                'EventInfo',
+                parent=styles['Normal'],
+                fontSize=10,
+                spaceAfter=10
+            )
             
-#            event_info = f"""
-#            <b>Event:</b> {event['event_name'] or 'N/A'}<br/>
-#            <b>Event ID:</b> {event['event_id']}<br/>
-#            <b>Type:</b> {event['event_type'].title()}<br/>
-#            <b>Organizer:</b> {event['organizer_name']}<br/>
-#            <b>Participants:</b> {len(participants)}<br/>
-#            <b>Date:</b> {event['started_at'].strftime('%Y-%m-%d %H:%M') if event['started_at'] else 'N/A'}<br/>
-#            """
-#            story.append(Paragraph(event_info, event_info_style))
-#            story.append(Spacer(1, 20))
+            event_info = f"""
+            <b>Event:</b> {event['event_name'] or 'N/A'}<br/>
+            <b>Event ID:</b> {event['event_id']}<br/>
+            <b>Type:</b> {event['event_type'].title()}<br/>
+            <b>Organizer:</b> {event['organizer_name']}<br/>
+            <b>Participants:</b> {len(participants)}<br/>
+            <b>Date:</b> {event['started_at'].strftime('%Y-%m-%d %H:%M') if event['started_at'] else 'N/A'}<br/>
+            """
+            story.append(Paragraph(event_info, event_info_style))
+            story.append(Spacer(1, 20))
             
-#            # Payroll Summary
-#            summary_style = ParagraphStyle(
-#                'SummaryHeader',
-#                parent=styles['Heading2'],
-#                fontSize=14,
-#                spaceAfter=10,
-#                textColor=colors.darkgreen
-#            )
-#            story.append(Paragraph("💰 Payroll Summary", summary_style))
+            # Payroll Summary
+            summary_style = ParagraphStyle(
+                'SummaryHeader',
+                parent=styles['Heading2'],
+                fontSize=14,
+                spaceAfter=10,
+                textColor=colors.darkgreen
+            )
+            story.append(Paragraph("💰 Payroll Summary", summary_style))
             
-#            summary_info = f"""
-#            <b>Total Value:</b> {total_value:,.2f} aUEC<br/>
-#            <b>Total SCU:</b> {total_scu:,.0f}<br/>
-#            <b>Participants:</b> {len(payouts)}<br/>
-#            <b>Donors:</b> {len(donating_participants)}<br/>
-#            """
-#            story.append(Paragraph(summary_info, event_info_style))
-#            story.append(Spacer(1, 20))
+            summary_info = f"""
+            <b>Total Value:</b> {total_value:,.2f} aUEC<br/>
+            <b>Total SCU:</b> {total_scu:,.0f}<br/>
+            <b>Participants:</b> {len(payouts)}<br/>
+            <b>Donors:</b> {len(donating_participants)}<br/>
+            """
+            story.append(Paragraph(summary_info, event_info_style))
+            story.append(Spacer(1, 20))
             
-#            # Individual Payouts Table
-#            story.append(Paragraph("👥 Individual Payouts", summary_style))
+            # Individual Payouts Table
+            story.append(Paragraph("👥 Individual Payouts", summary_style))
             
-#            # Create table data
-#            table_data = [['Participant', 'Time (min)', 'Base Payout', 'Final Payout', 'Status']]
+            # Create table data
+            table_data = [['Participant', 'Time (min)', 'Base Payout', 'Final Payout', 'Status']]
             
-#            for payout in payouts:
-#                table_data.append([
-#                    payout['username'],
-#                    f"{payout['participation_minutes']}",
-#                    f"{payout['base_payout_auec']:,.2f}",
-#                    f"{payout['final_payout_auec']:,.2f}",
-#                    "Donor" if payout['is_donor'] else "Standard"
-#                ])
+            for payout in payouts:
+                table_data.append([
+                    payout['username'],
+                    f"{payout['participation_minutes']}",
+                    f"{payout['base_payout_auec']:,.2f}",
+                    f"{payout['final_payout_auec']:,.2f}",
+                    "Donor" if payout['is_donor'] else "Standard"
+                ])
             
-#            # Create and style table with enhanced Red Legion theme
-#            table = Table(table_data, colWidths=[2.5*inch, 1*inch, 1.5*inch, 1.5*inch, 1*inch])
-#            table.setStyle(TableStyle([
-#                # Header styling
-#                ('BACKGROUND', (0, 0), (-1, 0), colors.Color(0.8, 0.2, 0.2)),  # Red Legion red
-#                ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
-#                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-#                ('FONTSIZE', (0, 0), (-1, 0), 11),
-#                ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
-#                ('VALIGN', (0, 0), (-1, 0), 'MIDDLE'),
-#                ('TOPPADDING', (0, 0), (-1, 0), 8),
-#                ('BOTTOMPADDING', (0, 0), (-1, 0), 8),
+            # Create and style table with enhanced Red Legion theme
+            table = Table(table_data, colWidths=[2.5*inch, 1*inch, 1.5*inch, 1.5*inch, 1*inch])
+            table.setStyle(TableStyle([
+                # Header styling
+                ('BACKGROUND', (0, 0), (-1, 0), colors.Color(0.8, 0.2, 0.2)),  # Red Legion red
+                ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, 0), 11),
+                ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
+                ('VALIGN', (0, 0), (-1, 0), 'MIDDLE'),
+                ('TOPPADDING', (0, 0), (-1, 0), 8),
+                ('BOTTOMPADDING', (0, 0), (-1, 0), 8),
                 
-#                # Data rows styling
-#                ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
-#                ('FONTSIZE', (0, 1), (-1, -1), 10),
-#                ('ALIGN', (0, 1), (-1, -1), 'CENTER'),
-#                ('ALIGN', (0, 1), (0, -1), 'LEFT'),  # Left align usernames
-#                ('VALIGN', (0, 1), (-1, -1), 'MIDDLE'),
-#                ('TOPPADDING', (0, 1), (-1, -1), 6),
-#                ('BOTTOMPADDING', (0, 1), (-1, -1), 6),
+                # Data rows styling
+                ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
+                ('FONTSIZE', (0, 1), (-1, -1), 10),
+                ('ALIGN', (0, 1), (-1, -1), 'CENTER'),
+                ('ALIGN', (0, 1), (0, -1), 'LEFT'),  # Left align usernames
+                ('VALIGN', (0, 1), (-1, -1), 'MIDDLE'),
+                ('TOPPADDING', (0, 1), (-1, -1), 6),
+                ('BOTTOMPADDING', (0, 1), (-1, -1), 6),
                 
-#                # Alternating row colors
-#                ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.Color(0.97, 0.97, 0.97), colors.Color(0.92, 0.92, 0.92)]),
+                # Alternating row colors
+                ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.Color(0.97, 0.97, 0.97), colors.Color(0.92, 0.92, 0.92)]),
                 
-#                # Borders and grid
-#                ('GRID', (0, 0), (-1, -1), 0.5, colors.Color(0.6, 0.6, 0.6)),
-#                ('LINEBELOW', (0, 0), (-1, 0), 2, colors.Color(0.8, 0.2, 0.2)),  # Thick underline for header
+                # Borders and grid
+                ('GRID', (0, 0), (-1, -1), 0.5, colors.Color(0.6, 0.6, 0.6)),
+                ('LINEBELOW', (0, 0), (-1, 0), 2, colors.Color(0.8, 0.2, 0.2)),  # Thick underline for header
                 
-#                # Special formatting for status column
-#                ('TEXTCOLOR', (4, 1), (4, -1), colors.Color(0.2, 0.6, 0.2)),  # Green for status
-#            ])
+                # Special formatting for status column
+                ('TEXTCOLOR', (4, 1), (4, -1), colors.Color(0.2, 0.6, 0.2)),  # Green for status
+            ])
             
-#            story.append(table)
+            story.append(table)
             
-#            # Build PDF
-#            doc.build(story)
-#            pdf_buffer.seek(0)
+            # Build PDF
+            doc.build(story)
+            pdf_buffer.seek(0)
             
-#            # Generate filename
-#            filename = f"payroll_{event_id}_preview.pdf"
+            # Generate filename
+            filename = f"payroll_{event_id}_preview.pdf"
             
-#            return Response(
-#                content=pdf_buffer.read(),
-#                media_type="application/pdf",
-#                headers={"Content-Disposition": f"attachment; filename={filename}"}
-#            )
+            return Response(
+                content=pdf_buffer.read(),
+                media_type="application/pdf",
+                headers={"Content-Disposition": f"attachment; filename={filename}"}
+            )
             
-#    except HTTPException:
-#        raise  # Re-raise HTTP exceptions
-#    except Exception as e:
-#        logger.error(f"Error generating PDF for calculated payroll {event_id}: {e}")
-#        raise HTTPException(status_code=500, detail=f"PDF generation error: {str(e)}")
+    except HTTPException:
+        raise  # Re-raise HTTP exceptions
+    except Exception as e:
+        logger.error(f"Error generating PDF for calculated payroll {event_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"PDF generation error: {str(e)}")
 
 @app.post("/admin/create-test-event/{event_type}")
 async def create_test_event(event_type: str):
@@ -1311,21 +1231,6 @@ async def create_event(request: EventCreationRequest):
     """Create a new mining event compatible with payroll system."""
     try:
         pool = await get_db_pool()
-        if pool is None:
-            # Return mock success response when database is not available
-            from datetime import datetime
-            import uuid
-            return {
-                'event_id': f'evt_{uuid.uuid4().hex[:8]}',
-                'event_name': request.event_name,
-                'organizer_name': request.organizer_name,
-                'event_type': request.event_type,
-                'started_at': datetime.now().isoformat(),
-                'ended_at': None,
-                'status': 'active',
-                'message': 'Event created successfully (mock mode)'
-            }
-        
         async with pool.acquire() as conn:
             # Generate event ID matching the database constraint: [a-z]{2,4}-[a-z0-9]{6}
             import random

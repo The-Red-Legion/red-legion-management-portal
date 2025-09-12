@@ -5,11 +5,29 @@
       <div class="max-w-7xl mx-auto px-4 py-6">
         <div class="flex items-center justify-between">
           <div class="flex items-center space-x-4">
-            <img src="/static/red-legion-logo.png" alt="Red Legion" class="h-12 w-12" />
+            <img src="/red-legion-logo.png" alt="Red Legion" class="h-12 w-12" />
             <h1 class="text-2xl font-bold text-red-legion-500">Red Legion Payroll</h1>
           </div>
           <div v-if="user" class="flex items-center space-x-4">
             <span class="text-space-gray-300">Welcome, {{ user.username }}</span>
+            <router-link 
+              to="/management" 
+              class="bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded-lg transition-colors flex items-center space-x-2"
+            >
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"></path>
+              </svg>
+              <span>Management</span>
+            </router-link>
+            <button 
+              @click="showEventCreationModal = true" 
+              class="bg-green-600 hover:bg-green-700 px-4 py-2 rounded-lg transition-colors flex items-center space-x-2"
+            >
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path>
+              </svg>
+              <span>Create Event</span>
+            </button>
             <button 
               @click="logout" 
               class="bg-red-legion-600 hover:bg-red-legion-700 px-4 py-2 rounded-lg transition-colors"
@@ -22,10 +40,16 @@
     </header>
 
     <!-- Main Content -->
-    <main class="max-w-7xl mx-auto px-4 py-8">
-      <LoginPage v-if="!user" @login="handleLogin" />
-      <PayrollWizard v-else :user="user" />
-    </main>
+    <router-view :user="user" @login="handleLogin" @show-event-modal="showEventCreationModal = true" />
+
+    <!-- Event Creation Modal -->
+    <EventCreationModal 
+      v-if="showEventCreationModal" 
+      :user="user"
+      @close="showEventCreationModal = false"
+      @event-created="handleEventCreated"
+    />
+
 
     <!-- Footer -->
     <footer class="bg-space-gray-800 mt-12">
@@ -38,17 +62,16 @@
 
 <script>
 import { ref, onMounted } from 'vue'
-import LoginPage from './components/LoginPage.vue'
-import PayrollWizard from './components/PayrollWizard.vue'
+import EventCreationModal from './components/EventCreationModal.vue'
 
 export default {
   name: 'App',
   components: {
-    LoginPage,
-    PayrollWizard
+    EventCreationModal
   },
   setup() {
     const user = ref(null)
+    const showEventCreationModal = ref(false)
 
     const handleLogin = (userData) => {
       user.value = userData
@@ -58,6 +81,12 @@ export default {
     const logout = () => {
       user.value = null
       localStorage.removeItem('red_legion_user')
+    }
+
+    const handleEventCreated = (eventData) => {
+      showEventCreationModal.value = false
+      // TODO: Could refresh event list or show success message
+      console.log('Event created:', eventData)
     }
 
     onMounted(() => {
@@ -83,7 +112,9 @@ export default {
     return {
       user,
       handleLogin,
-      logout
+      logout,
+      showEventCreationModal,
+      handleEventCreated
     }
   }
 }

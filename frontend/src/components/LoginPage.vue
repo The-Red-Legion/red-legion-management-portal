@@ -2,7 +2,7 @@
   <div class="min-h-screen flex items-center justify-center">
     <div class="max-w-md w-full space-y-8">
       <div class="text-center">
-        <img src="/static/red-legion-logo.png" alt="Red Legion" class="mx-auto h-24 w-24 mb-6" />
+        <img src="/red-legion-logo.png" alt="Red Legion" class="mx-auto h-24 w-24 mb-6" />
         <h2 class="text-3xl font-bold text-red-legion-500 mb-2">Red Legion Payroll</h2>
         <p class="text-space-gray-400 mb-8">
           Web interface for Discord bot payroll system

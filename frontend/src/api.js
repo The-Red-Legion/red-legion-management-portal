@@ -53,25 +53,63 @@ export const apiService = {
   },
 
   // Payroll calculation
-  async calculatePayroll(eventId, oreQuantities, customPrices = null) {
+  async calculatePayroll(eventId, oreQuantities, customPrices = null, donatingUsers = []) {
     const response = await api.post(`/payroll/${eventId}/calculate`, {
       ore_quantities: oreQuantities,
-      custom_prices: customPrices
+      custom_prices: customPrices,
+      donating_users: donatingUsers
     })
     return response.data
   },
 
-  // UEX Prices (could be expanded later)
+  // UEX Prices
   async getUexPrices() {
-    // This would call the backend which fetches from UEX API
-    // For now, returning default prices from backend
-    return {
-      'QUANTAINIUM': 21869.0,
-      'GOLD': 5832.0,
-      'COPPER': 344.0,
-      'RICCITE': 20585.0,
-      'CORUNDUM': 359.0,
-    }
+    const response = await api.get('/uex-prices')
+    return response.data
+  },
+
+  // Event Management
+  async closeEvent(eventId) {
+    const response = await api.post(`/events/${eventId}/close`)
+    return response.data
+  },
+
+  // Payroll Management
+  async finalizePayroll(eventId, oreQuantities, customPrices = null, donatingUsers = []) {
+    const response = await api.post(`/payroll/${eventId}/finalize`, {
+      ore_quantities: oreQuantities,
+      custom_prices: customPrices,
+      donating_users: donatingUsers
+    })
+    return response.data
+  },
+
+  // Trading Locations
+  async getTradingLocations() {
+    const response = await api.get('/api/trading-locations')
+    return response.data
+  },
+
+  // Material Pricing
+  async getMaterialPrices(materialNames, locationId = null) {
+    const materialsParam = Array.isArray(materialNames) ? materialNames.join(',') : materialNames
+    const url = locationId 
+      ? `/api/location-prices/${locationId}?materials=${encodeURIComponent(materialsParam)}`
+      : `/api/material-prices/${encodeURIComponent(materialsParam)}`
+    const response = await api.get(url)
+    return response.data
+  },
+
+  // PDF Export for calculated payrolls
+  async exportCalculatedPayrollPdf(eventId, oreQuantities, customPrices = null, donatingUsers = []) {
+    const response = await api.post(`/payroll/${eventId}/export-pdf`, {
+      ore_quantities: oreQuantities,
+      custom_prices: customPrices,
+      donating_users: donatingUsers
+    }, {
+      responseType: 'blob'  // Important for PDF download
+    })
+    return response.data
   }
 }
 
