@@ -24,6 +24,13 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import inch
 from reportlab.lib import colors
 
+# Discord bot integration
+from services.discord_integration import (
+    trigger_voice_tracking_on_event_start,
+    trigger_voice_tracking_on_event_stop,
+    get_discord_bot_status
+)
+
 # Load environment variables
 load_dotenv()
 
@@ -1853,14 +1860,42 @@ async def create_event(request: EventCreationRequest):
             # Fetch the created event
             event_data = await conn.fetchrow("""
                 SELECT event_id, event_name, organizer_name, started_at, status, 
-                       location_notes, description, event_type
+                       location_notes, description, event_type, organizer_id
                 FROM events WHERE event_id = $1
             """, event_id)
             
+            # Prepare event data for Discord integration
+            discord_event_data = {
+                "event_id": event_data["event_id"],
+                "event_name": event_data["event_name"],
+                "event_type": event_data["event_type"],
+                "organizer_name": event_data["organizer_name"],
+                "organizer_id": str(event_data["organizer_id"]),
+                "location": event_data["location_notes"],
+                "notes": event_data["description"]
+            }
+            
+            # Try to start Discord voice tracking (non-blocking)
+            try:
+                logger.info(f"🎯 Attempting to start Discord voice tracking for event: {event_id}")
+                discord_result = await trigger_voice_tracking_on_event_start(discord_event_data)
+                
+                if discord_result.get("success"):
+                    logger.info(f"✅ Discord voice tracking started successfully for event: {event_id}")
+                    discord_message = "Discord voice tracking started"
+                else:
+                    logger.warning(f"⚠️ Discord voice tracking failed for event {event_id}: {discord_result.get('error', 'Unknown error')}")
+                    discord_message = f"Event created but Discord voice tracking failed: {discord_result.get('error', 'Unknown error')}"
+                    
+            except Exception as e:
+                logger.error(f"❌ Exception during Discord voice tracking setup for event {event_id}: {e}")
+                discord_message = f"Event created but Discord integration failed: {str(e)}"
+            
             return {
                 "success": True,
-                "message": "Mining event created successfully",
-                "event": dict(event_data)
+                "message": f"Mining event created successfully. {discord_message}",
+                "event": dict(event_data),
+                "discord_integration": discord_result if 'discord_result' in locals() else {"success": False, "error": "Integration not attempted"}
             }
             
     except Exception as e:
@@ -1919,17 +1954,57 @@ async def close_event(event_id: str):
                 WHERE event_id = $3
             """, total_participants, total_duration_minutes, event_id)
             
+            # Try to stop Discord voice tracking (non-blocking)
+            try:
+                logger.info(f"🛑 Attempting to stop Discord voice tracking for event: {event_id}")
+                discord_result = await trigger_voice_tracking_on_event_stop(event_id)
+                
+                if discord_result.get("success"):
+                    logger.info(f"✅ Discord voice tracking stopped successfully for event: {event_id}")
+                    discord_message = "Discord voice tracking stopped"
+                else:
+                    logger.warning(f"⚠️ Discord voice tracking stop failed for event {event_id}: {discord_result.get('error', 'Unknown error')}")
+                    discord_message = f"Event closed but Discord voice tracking stop failed: {discord_result.get('error', 'Unknown error')}"
+                    
+            except Exception as e:
+                logger.error(f"❌ Exception during Discord voice tracking stop for event {event_id}: {e}")
+                discord_message = f"Event closed but Discord integration failed: {str(e)}"
+            
             return {
                 'success': True,
                 'event_id': event_id,
                 'total_participants': total_participants,
                 'total_duration_minutes': total_duration_minutes,
-                'message': 'Event closed successfully'
+                'message': f'Event closed successfully. {discord_message}',
+                'discord_integration': discord_result if 'discord_result' in locals() else {"success": False, "error": "Integration not attempted"}
             }
             
     except Exception as e:
         logger.error(f"Error closing event: {e}")
         raise HTTPException(status_code=500, detail="Failed to close event")
+
+@app.get("/discord/bot-status")
+async def discord_bot_status_endpoint():
+    """Get Discord bot connection status for admin dashboard."""
+    try:
+        logger.info("🔍 Checking Discord bot status")
+        status = await get_discord_bot_status()
+        
+        logger.info(f"🤖 Discord bot status: {'✅ Connected' if status.get('connected') else '❌ Disconnected'}")
+        
+        return {
+            "success": True,
+            "bot_status": status,
+            "message": "Discord bot status retrieved successfully"
+        }
+    except Exception as e:
+        logger.error(f"❌ Error checking Discord bot status: {e}")
+        return {
+            "success": False,
+            "error": str(e),
+            "bot_status": {"connected": False, "error": "Status check failed"},
+            "message": "Failed to check Discord bot status"
+        }
 
 # Trading Locations and Pricing Endpoints
 
