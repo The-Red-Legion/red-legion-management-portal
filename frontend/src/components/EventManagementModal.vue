@@ -17,7 +17,7 @@
           <p class="text-space-gray-400">Loading events...</p>
         </div>
 
-        <!-- Always show control buttons -->
+        <!-- Always show control buttons when not loading -->
         <div v-else>
           <div class="mb-4 flex justify-between items-center">
             <p class="text-space-gray-300">Total Events: {{ events.length }}</p>
@@ -74,7 +74,7 @@
             </div>
           </div>
 
-          <!-- Events Table or No Events Message -->
+          <!-- Events Table -->
           <div v-if="events.length > 0">
 
           <div class="bg-space-gray-700 rounded-lg overflow-hidden">
@@ -159,13 +159,13 @@
           </div>
         </div>
 
-        <!-- No Events State -->
-        <div v-else class="text-center py-8">
-          <div class="text-4xl mb-4">📋</div>
-          <h3 class="text-xl font-medium text-white mb-2">No Events Found</h3>
-          <p class="text-space-gray-400">No events have been created yet.</p>
+          <!-- No Events State -->
+          <div v-else class="text-center py-8">
+            <div class="text-4xl mb-4">📋</div>
+            <h3 class="text-xl font-medium text-white mb-2">No Events Found</h3>
+            <p class="text-space-gray-400">No events have been created yet.</p>
+          </div>
         </div>
-      </div>
     </div>
   </div>
 </template>
@@ -196,12 +196,14 @@ export default {
     const loadEvents = async () => {
       loading.value = true
       try {
-        const response = await fetch('http://localhost:8000/admin/events')
+        // Add cache-busting parameter to ensure fresh data
+        const response = await fetch(`http://localhost:8000/admin/events?_t=${Date.now()}`)
         if (!response.ok) {
           throw new Error(`HTTP error! status: ${response.status}`)
         }
         const data = await response.json()
         events.value = data
+        console.log('Loaded events:', data.length)
       } catch (error) {
         console.error('Failed to load events:', error)
         alert('Failed to load events. Please try again.')
@@ -226,6 +228,14 @@ export default {
         })
         
         if (!response.ok) {
+          if (response.status === 404) {
+            // Event was already deleted, just remove from local list and refresh
+            console.log(`Event ${eventId} was already deleted`)
+            events.value = events.value.filter(event => event.event_id !== eventId)
+            // Refresh to get current server state
+            await loadEvents()
+            return
+          }
           throw new Error(`HTTP error! status: ${response.status}`)
         }
         
@@ -235,7 +245,13 @@ export default {
         console.log(`Event ${eventId} deleted successfully`)
       } catch (error) {
         console.error('Failed to delete event:', error)
-        alert('Failed to delete event. Please try again.')
+        // If it's a 404, the event was already deleted, so refresh the list
+        if (error.message.includes('404')) {
+          console.log('Event was already deleted, refreshing list...')
+          await loadEvents()
+        } else {
+          alert('Failed to delete event. Please try again.')
+        }
       } finally {
         // Remove from deleting list
         deletingEvents.value = deletingEvents.value.filter(id => id !== eventId)
