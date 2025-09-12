@@ -132,13 +132,13 @@
           </p>
         </div>
 
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div v-for="material in materialTypes" :key="material" class="space-y-2">
+        <div v-if="materialsWithQuantities.length > 0" class="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div v-for="material in materialsWithQuantities" :key="material" class="space-y-2">
             <div class="flex items-center justify-between">
               <label :for="`price-${material}`" class="block text-sm font-medium text-space-gray-300">
                 {{ material }} Price (aUEC per SCU)
               </label>
-              <div v-if="materialPriceInfo[material] && materialsWithQuantities.includes(material)" class="text-xs text-green-400 max-w-xs text-right">
+              <div v-if="materialPriceInfo[material]" class="text-xs text-green-400 max-w-xs text-right">
                 Best: {{ materialPriceInfo[material].highest_price?.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}) }} aUEC/SCU<br>
                 <span class="text-space-gray-400">{{ materialPriceInfo[material].best_system }} → {{ materialPriceInfo[material].best_location }}</span>
               </div>
@@ -155,6 +155,12 @@
               class="w-full px-4 py-3 bg-space-gray-700 border border-space-gray-600 rounded-lg text-white placeholder-space-gray-400 focus:outline-none focus:ring-2 focus:ring-red-legion-500 focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed"
             />
           </div>
+        </div>
+        
+        <div v-else class="text-center py-8">
+          <div class="text-4xl mb-4">⚠️</div>
+          <h4 class="text-white font-medium mb-2">No Materials with Quantities</h4>
+          <p class="text-space-gray-400">Go back to the Quantities step and enter amounts for the {{ selectedEvent?.event_type === 'salvage' ? 'components' : 'materials' }} you collected.</p>
         </div>
 
         <div class="mt-6 flex justify-between items-center">
@@ -416,21 +422,6 @@
                 Closing...
               </button>
               
-              <button 
-                @click="exportResults" 
-                :disabled="exportingPDF"
-                :class="[
-                  'px-6 py-3 rounded-lg transition-colors flex items-center space-x-2',
-                  exportingPDF 
-                    ? 'bg-gray-500 text-gray-300 cursor-not-allowed' 
-                    : 'bg-green-600 hover:bg-green-700 text-white'
-                ]"
-              >
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
-                </svg>
-                <span>{{ exportingPDF ? 'Exporting...' : 'Export PDF' }}</span>
-              </button>
             </div>
           </div>
         </div>
@@ -471,11 +462,10 @@ export default {
     const calculating = ref(false)
     const payrollResult = ref(null)
     const closingEvent = ref(false)
-    const exportingPDF = ref(false)
     
     // Trading location state
     const tradingLocations = ref([])
-    const selectedLocationId = ref(null)
+    const selectedLocationId = ref(4) // Default to Orison (location_id: 4)
     const materialPriceInfo = ref({})
     const loadingLocations = ref(false)
 
@@ -504,8 +494,8 @@ export default {
     ]
 
     const salvageComponentTypes = [
-      'Recycled Material Composite',
-      'Construction Materials'
+      'RECYCLED MATERIAL COMPOSITE',
+      'CONSTRUCTION MATERIALS'
     ]
 
     // Computed property to get materials based on event type
@@ -696,6 +686,11 @@ export default {
           
           // Load material price info for materials with quantities
           await loadMaterialPriceInfo()
+          
+          // Trigger location change to load Orison prices if Orison is selected by default
+          if (selectedLocationId.value === 4) {
+            await handleLocationChange()
+          }
         }
         
         // Load participants when entering step 4 (Donations)
@@ -860,46 +855,6 @@ export default {
       defaultPrices.value = {}
     }
 
-    const exportResults = async () => {
-      if (!selectedEvent.value) return
-
-      exportingPDF.value = true
-      try {
-        // Prepare donation data (same logic as calculatePayroll)
-        const donatingUsers = []
-        for (const [userId, isDonating] of Object.entries(participantDonations.value)) {
-          if (isDonating) {
-            donatingUsers.push(userId)
-          }
-        }
-        
-        // Use custom prices if enabled, otherwise null for UEX prices
-        const prices = useCustomPrices.value ? customPrices.value : null
-        
-        // Call the new API endpoint that works with calculated data
-        const blob = await apiService.exportCalculatedPayrollPdf(
-          selectedEvent.value.event_id,
-          oreQuantities.value,
-          prices,
-          donatingUsers
-        )
-
-        // Create download
-        const url = window.URL.createObjectURL(blob)
-        const a = document.createElement('a')
-        a.href = url
-        a.download = `payroll_${selectedEvent.value.event_id}_preview.pdf`
-        document.body.appendChild(a)
-        a.click()
-        document.body.removeChild(a)
-        window.URL.revokeObjectURL(url)
-      } catch (error) {
-        console.error('Failed to export PDF:', error)
-        alert('Failed to export PDF. Please try again.')
-      } finally {
-        exportingPDF.value = false
-      }
-    }
 
     return {
       currentStep,
@@ -917,7 +872,6 @@ export default {
       calculating,
       payrollResult,
       closingEvent,
-      exportingPDF,
       hasOreQuantities,
       handleEventSelected,
       nextStep,
@@ -926,7 +880,6 @@ export default {
       closeEvent,
       closePayroll,
       startOver,
-      exportResults,
       tradingLocations,
       selectedLocationId,
       materialPriceInfo,

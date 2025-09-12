@@ -845,9 +845,501 @@ def create_enhanced_pdf_header(story, event, styles):
     
     return story
 
+async def generate_pdf_with_playwright(event_data: dict, payroll_data: dict) -> bytes:
+    """Generate PDF using Playwright to render HTML template."""
+    from playwright.async_api import async_playwright
+    from jinja2 import Template
+    import os
+    from datetime import datetime
+    
+    # HTML template with Red Legion styling (matching the dark theme)
+    html_template = '''
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Payroll Summary</title>
+        <style>
+            @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+            
+            * {
+                margin: 0;
+                padding: 0;
+                box-sizing: border-box;
+            }
+            
+            body {
+                background: #1f2937;
+                color: #ffffff;
+                font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+                min-height: 100vh;
+                padding: 18px;
+                margin: 0;
+            }
+            
+            .container {
+                max-width: 100%;
+                width: calc(100% - 36px);
+                margin: 0 auto;
+                background: #1f2937;
+                border-radius: 6px;
+                overflow: hidden;
+            }
+            
+            .header {
+                background: #374151;
+                padding: 10px 15px;
+                display: flex;
+                align-items: center;
+                gap: 10px;
+            }
+            
+            .logo {
+                width: 30px;
+                height: 30px;
+                border-radius: 4px;
+                background: #dc2626;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                font-size: 12px;
+                font-weight: bold;
+                color: white;
+            }
+            
+            .header-title {
+                font-size: 14px;
+                font-weight: 700;
+                color: #ffffff;
+            }
+            
+            .content {
+                padding: 0;
+            }
+            
+            .event-header {
+                display: flex;
+                align-items: center;
+                gap: 5px;
+                margin-bottom: 15px;
+            }
+            
+            .event-title {
+                font-size: 12px;
+                font-weight: 600;
+                color: #ffffff;
+            }
+            
+            .event-details {
+                display: grid;
+                grid-template-columns: 1fr 1fr;
+                gap: 10px;
+                margin-bottom: 15px;
+                background: #374151;
+                padding: 10px;
+                border-radius: 4px;
+            }
+            
+            .detail-item {
+                display: flex;
+                flex-direction: column;
+                gap: 2px;
+            }
+            
+            .detail-label {
+                font-size: 6px;
+                color: #9ca3af;
+                font-weight: 500;
+            }
+            
+            .detail-value {
+                font-size: 7px;
+                color: #ffffff;
+                font-weight: 600;
+            }
+            
+            .section {
+                margin-bottom: 20px;
+            }
+            
+            .section-title {
+                display: flex;
+                align-items: center;
+                gap: 4px;
+                font-size: 9px;
+                font-weight: 600;
+                color: #fbbf24;
+                margin-bottom: 10px;
+            }
+            
+            .payroll-summary {
+                display: grid;
+                grid-template-columns: 1fr 1fr;
+                gap: 10px;
+                background: #374151;
+                padding: 10px;
+                border-radius: 4px;
+                margin-bottom: 15px;
+            }
+            
+            .summary-item {
+                display: flex;
+                flex-direction: column;
+                gap: 2px;
+            }
+            
+            .summary-label {
+                font-size: 6px;
+                color: #9ca3af;
+                font-weight: 500;
+            }
+            
+            .summary-value {
+                font-size: 8px;
+                color: #ffffff;
+                font-weight: 600;
+            }
+            
+            .ore-breakdown {
+                margin-bottom: 15px;
+            }
+            
+            .ore-grid {
+                display: grid;
+                grid-template-columns: repeat(3, 1fr);
+                gap: 8px;
+                margin-bottom: 8px;
+            }
+            
+            .ore-card {
+                background: #374151;
+                border-radius: 4px;
+                padding: 12px;
+                border: 1px solid #4b5563;
+                min-height: 120px;
+            }
+            
+            .ore-header {
+                font-size: 9px;
+                font-weight: 600;
+                color: #ffffff;
+                margin-bottom: 8px;
+                display: flex;
+                align-items: flex-start;
+                justify-content: space-between;
+                min-height: 20px;
+                line-height: 1.2;
+            }
+            
+            .ore-scu {
+                font-size: 7px;
+                color: #9ca3af;
+                font-weight: 500;
+                white-space: nowrap;
+            }
+            
+            .ore-detail {
+                margin-bottom: 6px;
+            }
+            
+            .ore-detail:last-child {
+                margin-bottom: 0;
+            }
+            
+            .ore-label {
+                font-size: 6px;
+                color: #9ca3af;
+                margin-bottom: 3px;
+            }
+            
+            .ore-value {
+                font-size: 7px;
+                font-weight: 600;
+            }
+            
+            .ore-quantity {
+                color: #10b981;
+            }
+            
+            .ore-price {
+                color: #3b82f6;
+            }
+            
+            .ore-total {
+                color: #f59e0b;
+            }
+            
+            .participants-table {
+                background: #374151;
+                border-radius: 4px;
+                overflow: hidden;
+            }
+            
+            .table-header {
+                background: #dc2626;
+                display: grid;
+                grid-template-columns: 20px 2fr 1fr 1.5fr 1.5fr 1fr;
+                padding: 7px 10px;
+                font-weight: 600;
+                font-size: 5px;
+            }
+            
+            .table-row {
+                display: grid;
+                grid-template-columns: 20px 2fr 1fr 1.5fr 1.5fr 1fr;
+                padding: 5px 8px;
+                border-bottom: 1px solid #4b5563;
+                align-items: center;
+                font-size: 5px;
+            }
+            
+            .table-row:last-child {
+                border-bottom: none;
+            }
+            
+            .table-row:nth-child(even) {
+                background: #2d3748;
+            }
+            
+            .participant-name {
+                font-weight: 500;
+            }
+            
+            .time-value {
+                color: #9ca3af;
+            }
+            
+            .payout-base {
+                color: #3b82f6;
+                font-weight: 600;
+            }
+            
+            .payout-final {
+                color: #10b981;
+                font-weight: 700;
+            }
+            
+            .status-standard {
+                background: #059669;
+                color: white;
+                padding: 2px 4px;
+                border-radius: 2px;
+                font-size: 5px;
+                font-weight: 500;
+                text-align: center;
+            }
+            
+            .status-donor {
+                background: #7c3aed;
+                color: white;
+                padding: 2px 4px;
+                border-radius: 2px;
+                font-size: 5px;
+                font-weight: 500;
+                text-align: center;
+            }
+            
+            .print-only {
+                page-break-inside: avoid;
+            }
+            
+            .top-logo {
+                text-align: center;
+                padding: 15px 0;
+                background: #1f2937;
+                margin-bottom: 10px;
+            }
+            
+            .top-logo .logo-large {
+                width: 60px;
+                height: 60px;
+                margin-bottom: 8px;
+            }
+            
+            .top-logo .logo-text {
+                font-size: 12px;
+                color: #ffffff;
+                font-weight: 600;
+            }
+        </style>
+    </head>
+    <body>
+        <div class="top-logo">
+            <div class="logo-large">
+                <div style="width: 60px; height: 60px; background: #dc2626; border-radius: 8px; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold; font-size: 20px;">RL</div>
+            </div>
+            <div class="logo-text">RED LEGION</div>
+        </div>
+        <div class="container">
+            <div class="header">
+                <div class="logo">RL</div>
+                <h1 class="header-title">📋 Payroll Summary</h1>
+            </div>
+            
+            <div class="content">
+                <div class="event-header">
+                    <h2 class="event-title">← {{event_name}}</h2>
+                </div>
+                
+                <div class="event-details">
+                    <div class="detail-item">
+                        <span class="detail-label">Event ID</span>
+                        <span class="detail-value">{{event_id}}</span>
+                    </div>
+                    <div class="detail-item">
+                        <span class="detail-label">Organizer</span>
+                        <span class="detail-value">{{organizer}}</span>
+                    </div>
+                    <div class="detail-item">
+                        <span class="detail-label">Duration</span>
+                        <span class="detail-value">{{duration}}</span>
+                    </div>
+                    <div class="detail-item">
+                        <span class="detail-label">Participants</span>
+                        <span class="detail-value">{{participant_count}}</span>
+                    </div>
+                </div>
+                
+                <div class="section">
+                    <h3 class="section-title">📋 Payroll Summary</h3>
+                    <div class="payroll-summary">
+                        <div class="summary-item">
+                            <span class="summary-label">Total Payout</span>
+                            <span class="summary-value">{{total_payout}} aUEC</span>
+                        </div>
+                        <div class="summary-item">
+                            <span class="summary-label">Average Payout</span>
+                            <span class="summary-value">{{average_payout}} aUEC</span>
+                        </div>
+                        <div class="summary-item">
+                            <span class="summary-label">Total Participation</span>
+                            <span class="summary-value">{{total_participation}}</span>
+                        </div>
+                        <div class="summary-item">
+                            <span class="summary-label">Calculated By</span>
+                            <span class="summary-value">{{calculated_by}}</span>
+                        </div>
+                        <div class="summary-item">
+                            <span class="summary-label">Total SCU Collected</span>
+                            <span class="summary-value">{{total_scu}}</span>
+                        </div>
+                        <div class="summary-item">
+                            <span class="summary-label"></span>
+                            <span class="summary-value"></span>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="section ore-breakdown">
+                    <h3 class="section-title">Ore Breakdown:</h3>
+                    <div class="ore-grid">
+                        {% for ore in ores %}
+                        <div class="ore-card">
+                            <div class="ore-header">
+                                <span>{{ ore.name }}</span>
+                                <span class="ore-scu">SCU</span>
+                            </div>
+                            <div class="ore-detail">
+                                <div class="ore-label">Quantity:</div>
+                                <div class="ore-value ore-quantity">{{ ore.quantity }}</div>
+                            </div>
+                            <div class="ore-detail">
+                                <div class="ore-label">Price per unit:</div>
+                                <div class="ore-value ore-price">{{ ore.price_per_unit }} aUEC</div>
+                            </div>
+                            <div class="ore-detail">
+                                <div class="ore-label">Total Value:</div>
+                                <div class="ore-value ore-total">{{ ore.total_value }} aUEC</div>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+                
+                <div class="section">
+                    <h3 class="section-title">👥 Individual Payouts</h3>
+                    <div class="participants-table">
+                        <div class="table-header">
+                            <div>#</div>
+                            <div>Participant</div>
+                            <div>Time</div>
+                            <div>Base Payout</div>
+                            <div>Final Payout</div>
+                            <div>Status</div>
+                        </div>
+                        {% for participant in participants %}
+                        <div class="table-row">
+                            <div>{{ loop.index }}</div>
+                            <div class="participant-name">{{ participant.name }}</div>
+                            <div class="time-value">{{ participant.time }}</div>
+                            <div class="payout-base">{{ participant.base_payout }}</div>
+                            <div class="payout-final">{{ participant.final_payout }}</div>
+                            <div>
+                                <span class="{% if participant.is_donor %}status-donor{% else %}status-standard{% endif %}">
+                                    {% if participant.is_donor %}Donor{% else %}Standard{% endif %}
+                                </span>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </body>
+    </html>
+    '''
+    
+    try:
+        # Render template with data
+        template = Template(html_template)
+        
+        # Calculate duration string
+        duration = "N/A"
+        if event_data.get('total_duration_minutes'):
+            hours = event_data['total_duration_minutes'] // 60
+            minutes = event_data['total_duration_minutes'] % 60
+            duration = f"{hours}h {minutes}m"
+        
+        html_content = template.render(
+            event_name=event_data.get('event_name', 'Unknown Event'),
+            event_id=event_data.get('event_id', 'Unknown'),
+            organizer=event_data.get('organizer_name', 'Unknown'),
+            duration=duration,
+            participant_count=len(payroll_data.get('participants', [])),
+            total_payout=payroll_data.get('total_payout', '0'),
+            total_scu=payroll_data.get('total_scu', '0'),
+            average_payout=payroll_data.get('average_payout', '0'),
+            calculated_by=payroll_data.get('calculated_by', 'System'),
+            total_participation=f"{len(payroll_data.get('participants', []))} members",
+            ores=payroll_data.get('ores', []),
+            participants=payroll_data.get('participants', [])
+        )
+        
+        async with async_playwright() as p:
+            browser = await p.chromium.launch()
+            page = await browser.new_page()
+            
+            # Set content and wait for load
+            await page.set_content(html_content, wait_until='networkidle')
+            
+            # Generate PDF with A4 format
+            pdf_bytes = await page.pdf(
+                format='A4',
+                margin={'top': '10mm', 'right': '10mm', 'bottom': '10mm', 'left': '10mm'},
+                print_background=True
+            )
+            
+            await browser.close()
+            return pdf_bytes
+            
+    except Exception as e:
+        logger.error(f"Error generating PDF with Playwright: {e}")
+        raise HTTPException(status_code=500, detail=f"PDF generation failed: {str(e)}")
+
 @app.get("/admin/payroll-export/{event_id}")
 async def export_payroll_pdf(event_id: str):
-    """Export payroll summary as CSV."""
+    """Export payroll summary as PDF using Playwright."""
     try:
         pool = await get_db_pool()
         if pool is None:
@@ -885,66 +1377,85 @@ async def export_payroll_pdf(event_id: str):
                 ORDER BY final_payout_auec DESC
             """, payroll['payroll_id'])
             
-            # Generate CSV content
-            import io
-            import csv
+            # Prepare data for PDF generation
             import json
             from datetime import datetime
+            from fastapi.responses import Response
             
-            csv_buffer = io.StringIO()
-            writer = csv.writer(csv_buffer)
+            # Parse mining yields and ore prices
+            mining_yields = {}
+            ore_prices = {}
             
-            # Write header information
-            writer.writerow(['Red Legion Payroll Export'])
-            writer.writerow(['Generated:', datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC')])
-            writer.writerow(['Event ID:', event['event_id']])
-            writer.writerow(['Event Name:', event.get('event_name', 'N/A')])
-            writer.writerow(['Event Type:', event['event_type'].title() if event['event_type'] else 'N/A'])
-            writer.writerow(['Organizer:', event.get('organizer_name', 'N/A')])
-            writer.writerow(['Total Value:', f"{float(payroll['total_value_auec']):,.0f} aUEC"])
-            writer.writerow(['Total SCU:', f"{float(payroll.get('total_scu_collected', 0)):,.0f}"])
-            writer.writerow([])  # Empty row
-            
-            # Write ore quantities if available
             if payroll.get('mining_yields'):
                 try:
-                    ore_quantities = json.loads(payroll['mining_yields'])
-                    writer.writerow(['Ore Quantities:'])
-                    for ore, quantity in ore_quantities.items():
-                        writer.writerow(['', ore, f"{quantity:,.0f} SCU"])
-                    writer.writerow([])  # Empty row
+                    mining_yields = json.loads(payroll['mining_yields'])
                 except (json.JSONDecodeError, TypeError):
-                    pass
+                    mining_yields = {}
             
-            # Write payouts header
-            writer.writerow(['Individual Payouts:'])
-            writer.writerow(['Username', 'Time (min)', 'Base Payout (aUEC)', 'Final Payout (aUEC)', 'Status'])
+            if payroll.get('ore_prices_used'):
+                try:
+                    ore_prices = json.loads(payroll['ore_prices_used'])
+                except (json.JSONDecodeError, TypeError):
+                    ore_prices = {}
             
-            # Write individual payouts
+            # Prepare event data
+            event_data = {
+                'event_id': event['event_id'],
+                'event_name': event.get('event_name', 'N/A'),
+                'organizer_name': event.get('organizer_name', 'Unknown'),
+                'total_duration_minutes': event.get('total_duration_minutes', 0),
+                'participant_count': len(payouts),
+                'created_at': event.get('created_at', datetime.now())
+            }
+            
+            # Prepare payroll data
+            ores_list = []
+            for ore_name, quantity in mining_yields.items():
+                if quantity > 0:  # Only include ores that were actually collected
+                    price_per_unit = ore_prices.get(ore_name.upper(), 0)
+                    total_value = quantity * price_per_unit
+                    ores_list.append({
+                        'name': ore_name.title(),
+                        'quantity': f"{quantity:,.0f}",
+                        'price_per_unit': f"{price_per_unit:,.2f}",
+                        'total_value': f"{total_value:,.2f}"
+                    })
+            
+            participants_list = []
             for payout in payouts:
-                status = 'Donor' if payout['is_donor'] else 'Standard'
-                writer.writerow([
-                    payout['username'],
-                    payout['participation_minutes'],
-                    f"{float(payout['base_payout_auec']):,.0f}",
-                    f"{float(payout['final_payout_auec']):,.0f}",
-                    status
-                ])
+                participants_list.append({
+                    'name': payout['username'],
+                    'time': f"{payout['participation_minutes']} min",
+                    'base_payout': f"{float(payout['base_payout_auec']):,.2f}",
+                    'final_payout': f"{float(payout['final_payout_auec']):,.2f}",
+                    'is_donor': payout['is_donor']
+                })
             
-            # Get CSV content
-            csv_content = csv_buffer.getvalue()
-            csv_buffer.close()
+            total_payout = float(payroll['total_value_auec'])
+            non_donors = len([p for p in payouts if not p['is_donor']])
+            average_payout = total_payout / non_donors if non_donors > 0 else 0
             
-            # Return as downloadable file
-            from fastapi.responses import Response
-            filename = f"payroll_{event_id}_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.csv"
+            payroll_summary = {
+                'ores': ores_list,
+                'participants': participants_list,
+                'total_payout': f"{total_payout:,.2f}",
+                'total_scu': f"{float(payroll.get('total_scu_collected', 0)):,.0f}",
+                'average_payout': f"{average_payout:,.2f}",
+                'calculated_by': payroll.get('calculated_by_name', 'System')
+            }
+            
+            # Generate PDF using Playwright
+            pdf_content = await generate_pdf_with_playwright(event_data, payroll_summary)
+            
+            # Return PDF as response
+            filename = f"payroll_{event_id}_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.pdf"
             
             return Response(
-                content=csv_content,
-                media_type="application/octet-stream",
+                content=pdf_content,
+                media_type="application/pdf",
                 headers={
                     "Content-Disposition": f"attachment; filename={filename}",
-                    "Content-Type": "application/octet-stream"
+                    "Content-Type": "application/pdf"
                 }
             )
             
@@ -1094,273 +1605,6 @@ async def export_payroll_pdf(event_id: str):
 #        raise  # Re-raise HTTP exceptions
 #    except Exception as e:
 #        logger.error(f"Error generating PDF for {event_id}: {e}")
-#        raise HTTPException(status_code=500, detail=f"PDF generation error: {str(e)}")
-
-@app.post("/payroll/{event_id}/export-pdf")
-async def export_calculated_payroll_pdf(event_id: str, request: PayrollCalculationRequest):
-    """Generate CSV export from calculated payroll data without requiring database storage."""
-    try:
-        # Use the existing calculate_payroll logic to get the data
-        from fastapi.encoders import jsonable_encoder
-        
-        # Create a temporary request to get calculation data
-        temp_request = PayrollCalculationRequest(
-            ore_quantities=request.ore_quantities,
-            custom_prices=request.custom_prices,
-            donating_users=request.donating_users
-        )
-        
-        # Get the calculated payroll data by calling the existing endpoint logic
-        pool = await get_db_pool()
-        if pool is None:
-            raise HTTPException(status_code=503, detail="Database not available")
-            
-        async with pool.acquire() as conn:
-            # Get event data
-            event = await conn.fetchrow("""
-                SELECT * FROM events WHERE event_id = $1
-            """, event_id)
-            
-            if not event:
-                raise HTTPException(status_code=404, detail="Event not found")
-            
-            # Get participants
-            participants = await conn.fetch("""
-                SELECT user_id, COALESCE(display_name, username) as username, 
-                       SUM(duration_minutes) as participation_minutes, 
-                       (SUM(duration_minutes)::float / NULLIF((SELECT SUM(duration_minutes) FROM participation WHERE event_id = $1), 0) * 100)::int as participation_percentage
-                FROM participation 
-                WHERE event_id = $1
-                GROUP BY user_id, COALESCE(display_name, username)
-                ORDER BY SUM(duration_minutes) DESC
-            """, event_id)
-            
-            # Get prices and calculate total value
-            uex_prices = await get_uex_prices()
-            prices = request.custom_prices or uex_prices
-            total_value = sum(quantity * prices.get(ore.upper(), 0) for ore, quantity in request.ore_quantities.items())
-            total_scu = sum(quantity for quantity in request.ore_quantities.values())
-            
-            # Calculate payouts with donation logic
-            donating_users = request.donating_users or []
-            donating_user_ids = [str(user_id) for user_id in donating_users]
-            
-            non_donating_participants = [p for p in participants if str(p['user_id']) not in donating_user_ids]
-            donating_participants = [p for p in participants if str(p['user_id']) in donating_user_ids]
-            
-            total_non_donating_minutes = sum(p['participation_minutes'] or 0 for p in non_donating_participants)
-            
-            payouts = []
-            
-            # Calculate payouts for non-donating participants
-            if total_non_donating_minutes > 0:
-                for participant in non_donating_participants:
-                    participation_mins = participant['participation_minutes'] or 0
-                    redistribution_percentage = participation_mins / total_non_donating_minutes
-                    individual_payout = total_value * redistribution_percentage
-                    
-                    payouts.append({
-                        'username': participant['username'],
-                        'participation_minutes': participation_mins,
-                        'participation_percentage': participant['participation_percentage'] or 0,
-                        'base_payout_auec': round(total_value * ((participant['participation_percentage'] or 0) / 100), 2),
-                        'final_payout_auec': round(individual_payout, 2),
-                        'is_donor': False
-                    })
-            
-            # Add donating participants with 0 payout
-            for participant in donating_participants:
-                base_payout = total_value * ((participant['participation_percentage'] or 0) / 100)
-                payouts.append({
-                    'username': participant['username'],
-                    'participation_minutes': participant['participation_minutes'] or 0,
-                    'participation_percentage': participant['participation_percentage'] or 0,
-                    'base_payout_auec': round(base_payout, 2),
-                    'final_payout_auec': 0.0,
-                    'is_donor': True
-                })
-        
-        # Generate CSV content
-        import io
-        import csv
-        from datetime import datetime
-        
-        csv_buffer = io.StringIO()
-        writer = csv.writer(csv_buffer)
-        
-        # Write header information
-        writer.writerow(['Red Legion Payroll Export'])
-        writer.writerow(['Generated:', datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC')])
-        writer.writerow(['Event ID:', event['event_id']])
-        writer.writerow(['Event Name:', event.get('event_name', 'N/A')])
-        writer.writerow(['Event Type:', event['event_type'].title() if event['event_type'] else 'N/A'])
-        writer.writerow(['Organizer:', event.get('organizer_name', 'N/A')])
-        writer.writerow(['Total Value:', f"{total_value:,.0f} aUEC"])
-        writer.writerow(['Total SCU:', f"{total_scu:,.0f}"])
-        writer.writerow([])  # Empty row
-        
-        # Write ore quantities
-        writer.writerow(['Ore Quantities:'])
-        for ore, quantity in request.ore_quantities.items():
-            price = prices.get(ore.upper(), 0)
-            value = quantity * price
-            writer.writerow(['', ore, f"{quantity:,.0f} SCU", f"{price:,.0f} aUEC/SCU", f"{value:,.0f} aUEC"])
-        writer.writerow([])  # Empty row
-        
-        # Write payouts header
-        writer.writerow(['Individual Payouts:'])
-        writer.writerow(['Username', 'Time (min)', 'Time %', 'Base Payout (aUEC)', 'Final Payout (aUEC)', 'Status'])
-        
-        # Write individual payouts
-        for payout in sorted(payouts, key=lambda x: x['final_payout_auec'], reverse=True):
-            status = 'Donor' if payout['is_donor'] else 'Standard'
-            writer.writerow([
-                payout['username'],
-                payout['participation_minutes'],
-                f"{payout['participation_percentage']}%",
-                f"{payout['base_payout_auec']:,.0f}",
-                f"{payout['final_payout_auec']:,.0f}",
-                status
-            ])
-        
-        # Get CSV content
-        csv_content = csv_buffer.getvalue()
-        csv_buffer.close()
-        
-        # Return as downloadable file
-        from fastapi.responses import Response
-        filename = f"payroll_{event_id}_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.csv"
-        
-        return Response(
-            content=csv_content,
-            media_type="application/octet-stream",
-            headers={
-                "Content-Disposition": f"attachment; filename={filename}",
-                "Content-Type": "application/octet-stream"
-            }
-        )
-        
-    except HTTPException:
-        raise  # Re-raise HTTP exceptions
-    except Exception as e:
-        logger.error(f"Error generating export for {event_id}: {e}")
-        raise HTTPException(status_code=500, detail=f"Export generation error: {str(e)}")
-            
-#            # Generate PDF using enhanced formatting
-#            pdf_buffer = io.BytesIO()
-#            doc = SimpleDocTemplate(pdf_buffer, pagesize=A4, topMargin=0.75*inch, 
-#                                  bottomMargin=0.75*inch, leftMargin=1*inch, rightMargin=1*inch)
-#            styles = getSampleStyleSheet()
-#            story = []
-            
-#            # Enhanced header with logo
-#            story = create_enhanced_pdf_header(story, event, styles)
-            
-#            # Event Information
-#            event_info_style = ParagraphStyle(
-#                'EventInfo',
-#                parent=styles['Normal'],
-#                fontSize=10,
-#                spaceAfter=10
-#            )
-            
-#            event_info = f"""
-#            <b>Event:</b> {event['event_name'] or 'N/A'}<br/>
-#            <b>Event ID:</b> {event['event_id']}<br/>
-#            <b>Type:</b> {event['event_type'].title()}<br/>
-#            <b>Organizer:</b> {event['organizer_name']}<br/>
-#            <b>Participants:</b> {len(participants)}<br/>
-#            <b>Date:</b> {event['started_at'].strftime('%Y-%m-%d %H:%M') if event['started_at'] else 'N/A'}<br/>
-#            """
-#            story.append(Paragraph(event_info, event_info_style))
-#            story.append(Spacer(1, 20))
-            
-#            # Payroll Summary
-#            summary_style = ParagraphStyle(
-#                'SummaryHeader',
-#                parent=styles['Heading2'],
-#                fontSize=14,
-#                spaceAfter=10,
-#                textColor=colors.darkgreen
-#            )
-#            story.append(Paragraph("💰 Payroll Summary", summary_style))
-            
-#            summary_info = f"""
-#            <b>Total Value:</b> {total_value:,.2f} aUEC<br/>
-#            <b>Total SCU:</b> {total_scu:,.0f}<br/>
-#            <b>Participants:</b> {len(payouts)}<br/>
-#            <b>Donors:</b> {len(donating_participants)}<br/>
-#            """
-#            story.append(Paragraph(summary_info, event_info_style))
-#            story.append(Spacer(1, 20))
-            
-#            # Individual Payouts Table
-#            story.append(Paragraph("👥 Individual Payouts", summary_style))
-            
-#            # Create table data
-#            table_data = [['Participant', 'Time (min)', 'Base Payout', 'Final Payout', 'Status']]
-            
-#            for payout in payouts:
-#                table_data.append([
-#                    payout['username'],
-#                    f"{payout['participation_minutes']}",
-#                    f"{payout['base_payout_auec']:,.2f}",
-#                    f"{payout['final_payout_auec']:,.2f}",
-#                    "Donor" if payout['is_donor'] else "Standard"
-#                ])
-            
-#            # Create and style table with enhanced Red Legion theme
-#            table = Table(table_data, colWidths=[2.5*inch, 1*inch, 1.5*inch, 1.5*inch, 1*inch])
-#            table.setStyle(TableStyle([
-#                # Header styling
-#                ('BACKGROUND', (0, 0), (-1, 0), colors.Color(0.8, 0.2, 0.2)),  # Red Legion red
-#                ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
-#                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-#                ('FONTSIZE', (0, 0), (-1, 0), 11),
-#                ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
-#                ('VALIGN', (0, 0), (-1, 0), 'MIDDLE'),
-#                ('TOPPADDING', (0, 0), (-1, 0), 8),
-#                ('BOTTOMPADDING', (0, 0), (-1, 0), 8),
-                
-#                # Data rows styling
-#                ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
-#                ('FONTSIZE', (0, 1), (-1, -1), 10),
-#                ('ALIGN', (0, 1), (-1, -1), 'CENTER'),
-#                ('ALIGN', (0, 1), (0, -1), 'LEFT'),  # Left align usernames
-#                ('VALIGN', (0, 1), (-1, -1), 'MIDDLE'),
-#                ('TOPPADDING', (0, 1), (-1, -1), 6),
-#                ('BOTTOMPADDING', (0, 1), (-1, -1), 6),
-                
-#                # Alternating row colors
-#                ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.Color(0.97, 0.97, 0.97), colors.Color(0.92, 0.92, 0.92)]),
-                
-#                # Borders and grid
-#                ('GRID', (0, 0), (-1, -1), 0.5, colors.Color(0.6, 0.6, 0.6)),
-#                ('LINEBELOW', (0, 0), (-1, 0), 2, colors.Color(0.8, 0.2, 0.2)),  # Thick underline for header
-                
-#                # Special formatting for status column
-#                ('TEXTCOLOR', (4, 1), (4, -1), colors.Color(0.2, 0.6, 0.2)),  # Green for status
-#            ])
-            
-#            story.append(table)
-            
-#            # Build PDF
-#            doc.build(story)
-#            pdf_buffer.seek(0)
-            
-#            # Generate filename
-#            filename = f"payroll_{event_id}_preview.pdf"
-            
-#            return Response(
-#                content=pdf_buffer.read(),
-#                media_type="application/pdf",
-#                headers={"Content-Disposition": f"attachment; filename={filename}"}
-#            )
-            
-#    except HTTPException:
-#        raise  # Re-raise HTTP exceptions
-#    except Exception as e:
-#        logger.error(f"Error generating PDF for calculated payroll {event_id}: {e}")
 #        raise HTTPException(status_code=500, detail=f"PDF generation error: {str(e)}")
 
 @app.post("/admin/create-test-event/{event_type}")

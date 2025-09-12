@@ -43,7 +43,9 @@ export const apiService = {
 
   // Events
   async getEvents() {
-    const response = await api.get('/events')
+    const response = await api.get('/events', {
+      timeout: 30000  // 30 second timeout for events loading
+    })
     return response.data
   },
 
@@ -100,17 +102,6 @@ export const apiService = {
     return response.data
   },
 
-  // PDF Export for calculated payrolls
-  async exportCalculatedPayrollPdf(eventId, oreQuantities, customPrices = null, donatingUsers = []) {
-    const response = await api.post(`/payroll/${eventId}/export-pdf`, {
-      ore_quantities: oreQuantities,
-      custom_prices: customPrices,
-      donating_users: donatingUsers
-    }, {
-      responseType: 'blob'  // Important for PDF download
-    })
-    return response.data
-  }
 }
 
 export default api
