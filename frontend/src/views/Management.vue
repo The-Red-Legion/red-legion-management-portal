@@ -28,8 +28,9 @@
           <p class="text-space-gray-400">Loading events...</p>
         </div>
 
-        <!-- Events Table -->
-        <div v-else-if="events.length > 0">
+        <!-- Content Section -->
+        <div v-else>
+          <!-- Control Buttons - Always visible when not loading -->
           <div class="mb-4 flex justify-between items-center">
             <p class="text-space-gray-300">Total Events: {{ events.length }}</p>
             <div class="flex space-x-3">
@@ -72,21 +73,22 @@
             </div>
           </div>
 
-          <div class="bg-space-gray-700 rounded-lg overflow-hidden">
+          <!-- Events Table -->
+          <div v-if="events.length > 0" class="bg-space-gray-700 rounded-lg overflow-hidden">
             <div class="overflow-x-auto">
               <table class="w-full">
                 <thead class="bg-space-gray-600">
                   <tr>
-                    <th class="text-left py-3 px-3 text-white font-medium w-20">Event ID</th>
-                    <th class="text-left py-3 px-2 text-white font-medium w-16">Type</th>
-                    <th class="text-left py-3 px-3 text-white font-medium">Name</th>
-                    <th class="text-left py-3 px-3 text-white font-medium">Organizer</th>
-                    <th class="text-left py-3 px-2 text-white font-medium w-16">Status</th>
-                    <th class="text-left py-3 px-3 text-white font-medium w-32">Started</th>
-                    <th class="text-left py-3 px-3 text-white font-medium w-32">Ended</th>
-                    <th class="text-center py-3 px-2 text-white font-medium w-20">Participants</th>
-                    <th class="text-center py-3 px-2 text-white font-medium w-16">Payroll</th>
-                    <th class="text-right py-3 px-3 text-white font-medium w-20">Actions</th>
+                    <th class="text-left py-3 px-2 text-white font-medium whitespace-nowrap">Event ID</th>
+                    <th class="text-left py-3 px-2 text-white font-medium whitespace-nowrap">Type</th>
+                    <th class="text-left py-3 px-2 text-white font-medium whitespace-nowrap">Name</th>
+                    <th class="text-left py-3 px-2 text-white font-medium whitespace-nowrap">Organizer</th>
+                    <th class="text-left py-3 px-2 text-white font-medium whitespace-nowrap">Status</th>
+                    <th class="text-left py-3 px-2 text-white font-medium whitespace-nowrap">Started</th>
+                    <th class="text-left py-3 px-2 text-white font-medium whitespace-nowrap">Ended</th>
+                    <th class="text-center py-3 px-2 text-white font-medium whitespace-nowrap">Participants</th>
+                    <th class="text-center py-3 px-2 text-white font-medium whitespace-nowrap">Payroll</th>
+                    <th class="text-right py-3 px-2 text-white font-medium whitespace-nowrap">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -95,41 +97,41 @@
                     :key="event.event_id"
                     class="border-b border-space-gray-600 hover:bg-space-gray-600"
                   >
-                    <td class="py-3 px-3">
-                      <code class="text-yellow-400 bg-space-gray-800 px-2 py-1 rounded text-xs whitespace-nowrap">
+                    <td class="py-3 px-2 whitespace-nowrap">
+                      <code class="text-yellow-400 bg-space-gray-800 px-2 py-1 rounded text-sm">
                         {{ event.event_id }}
                       </code>
                     </td>
-                    <td class="py-3 px-2">
+                    <td class="py-3 px-2 whitespace-nowrap">
                       <span :class="[
-                        'px-2 py-1 rounded-full text-xs font-medium whitespace-nowrap inline-block',
+                        'px-2 py-1 rounded-full text-xs font-medium inline-block',
                         event.event_type === 'mining' ? 'bg-blue-500 text-blue-100' : 'bg-orange-500 text-orange-100'
                       ]">
                         {{ event.event_type === 'mining' ? '⛏️ Mining' : '🔧 Salvage' }}
                       </span>
                     </td>
-                    <td class="py-3 px-3 text-white">{{ event.event_name || 'N/A' }}</td>
-                    <td class="py-3 px-3 text-space-gray-300">{{ event.organizer_name || 'N/A' }}</td>
-                    <td class="py-3 px-2">
+                    <td class="py-3 px-2 text-white whitespace-nowrap">{{ event.event_name || 'N/A' }}</td>
+                    <td class="py-3 px-2 text-space-gray-300 whitespace-nowrap">{{ event.organizer_name || 'N/A' }}</td>
+                    <td class="py-3 px-2 whitespace-nowrap">
                       <span :class="[
-                        'px-2 py-1 rounded-full text-xs font-medium whitespace-nowrap inline-block',
+                        'px-2 py-1 rounded-full text-xs font-medium inline-block',
                         event.status === 'open' ? 'bg-green-500 text-green-100' : 'bg-red-500 text-red-100'
                       ]">
                         {{ event.status === 'open' ? '🟢 Open' : '🔴 Closed' }}
                       </span>
                     </td>
-                    <td class="py-3 px-3 text-space-gray-300 text-sm">
+                    <td class="py-3 px-2 text-space-gray-300 text-sm whitespace-nowrap">
                       {{ formatDateTime(event.started_at) }}
                     </td>
-                    <td class="py-3 px-3 text-space-gray-300 text-sm">
+                    <td class="py-3 px-2 text-space-gray-300 text-sm whitespace-nowrap">
                       {{ event.ended_at ? formatDateTime(event.ended_at) : 'N/A' }}
                     </td>
-                    <td class="py-3 px-2 text-center">
+                    <td class="py-3 px-2 text-center whitespace-nowrap">
                       <span class="text-blue-400 font-mono">
                         {{ event.total_participants || 0 }}
                       </span>
                     </td>
-                    <td class="py-3 px-2 text-center">
+                    <td class="py-3 px-2 text-center whitespace-nowrap">
                       <button
                         v-if="event.payroll_calculated"
                         @click="showPayrollSummary(event.event_id)"
@@ -147,7 +149,7 @@
                         📊 Calculate
                       </router-link>
                     </td>
-                    <td class="py-3 px-3 text-right">
+                    <td class="py-3 px-2 text-right whitespace-nowrap">
                       <button
                         @click="deleteEvent(event.event_id)"
                         :disabled="deletingEvents.includes(event.event_id)"
@@ -166,13 +168,13 @@
               </table>
             </div>
           </div>
-        </div>
 
-        <!-- No Events State -->
-        <div v-else class="text-center py-8">
-          <div class="text-4xl mb-4">📋</div>
-          <h3 class="text-xl font-medium text-white mb-2">No Events Found</h3>
-          <p class="text-space-gray-400">No events have been created yet.</p>
+          <!-- No Events State -->
+          <div v-else class="text-center py-8">
+            <div class="text-4xl mb-4">📋</div>
+            <h3 class="text-xl font-medium text-white mb-2">No Events Found</h3>
+            <p class="text-space-gray-400">No events have been created yet.</p>
+          </div>
         </div>
       </div>
 
@@ -261,16 +263,33 @@
                     <span class="text-space-gray-400">Total SCU Collected:</span>
                     <span class="ml-2 text-orange-400 font-mono">{{ payrollData.statistics.total_scu_collected || 'N/A' }}</span>
                   </div>
-                  <div v-if="payrollData.statistics.mining_yields" class="col-span-2">
-                    <span class="text-space-gray-400">Ore Breakdown:</span>
-                    <div class="ml-2 mt-1 text-sm">
-                      <span
-                        v-for="(amount, ore) in payrollData.statistics.mining_yields"
+                  <div v-if="payrollData.statistics.ore_breakdown" class="col-span-2">
+                    <span class="text-space-gray-400 mb-3 block">Ore Breakdown:</span>
+                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                      <div
+                        v-for="(details, ore) in payrollData.statistics.ore_breakdown"
                         :key="ore"
-                        class="inline-block bg-space-gray-600 text-white px-2 py-1 rounded mr-2 mb-1"
+                        class="bg-space-gray-700 rounded-lg p-4 border border-space-gray-600"
                       >
-                        {{ ore }}: {{ amount }}
-                      </span>
+                        <div class="flex justify-between items-center mb-2">
+                          <h4 class="text-white font-bold text-lg">{{ ore.toUpperCase() }}</h4>
+                          <span class="text-space-gray-400 text-sm">SCU</span>
+                        </div>
+                        <div class="space-y-1">
+                          <div class="flex justify-between">
+                            <span class="text-space-gray-400 text-sm">Quantity:</span>
+                            <span class="text-blue-400 font-mono">{{ formatCurrency(details.quantity) }}</span>
+                          </div>
+                          <div class="flex justify-between">
+                            <span class="text-space-gray-400 text-sm">Price per unit:</span>
+                            <span class="text-purple-400 font-mono">{{ formatCurrency(details.price_per_scu) }} aUEC</span>
+                          </div>
+                          <div class="flex justify-between pt-2 border-t border-space-gray-600">
+                            <span class="text-space-gray-400 text-sm font-medium">Total Value:</span>
+                            <span class="text-green-400 font-mono font-bold">{{ formatCurrency(details.total_value) }} aUEC</span>
+                          </div>
+                        </div>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -388,7 +407,15 @@ export default {
       if (!dateString) return 'N/A'
       try {
         const date = new Date(dateString)
-        return date.toLocaleString()
+        return date.toLocaleString('en-US', {
+          timeZone: 'UTC',
+          year: 'numeric',
+          month: '2-digit',
+          day: '2-digit',
+          hour: '2-digit',
+          minute: '2-digit',
+          hour12: false
+        }) + ' UTC'
       } catch (error) {
         return 'Invalid Date'
       }

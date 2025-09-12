@@ -696,7 +696,7 @@ async def get_payroll_summary(event_id: str):
             # Get payroll information
             payroll = await conn.fetchrow("""
                 SELECT payroll_id, total_value_auec, total_scu_collected, mining_yields, 
-                       calculated_by_name, calculated_at
+                       ore_prices_used, calculated_by_name, calculated_at
                 FROM payrolls 
                 WHERE event_id = $1
             """, event_id)
@@ -717,6 +717,37 @@ async def get_payroll_summary(event_id: str):
             total_participation_minutes = sum(p['participation_minutes'] for p in payouts)
             donor_count = sum(1 for p in payouts if p['is_donor'])
             
+            # Parse mining_yields and ore_prices JSON if they exist
+            import json
+            mining_yields = None
+            ore_prices = None
+            ore_breakdown = None
+            
+            if payroll['mining_yields']:
+                try:
+                    mining_yields = json.loads(payroll['mining_yields'])
+                except (json.JSONDecodeError, TypeError):
+                    mining_yields = None
+            
+            if payroll['ore_prices_used']:
+                try:
+                    ore_prices = json.loads(payroll['ore_prices_used'])
+                except (json.JSONDecodeError, TypeError):
+                    ore_prices = None
+            
+            # Create ore breakdown with quantities and values
+            if mining_yields and ore_prices:
+                ore_breakdown = {}
+                for ore, quantity in mining_yields.items():
+                    if quantity > 0:  # Only include ores that were actually collected
+                        price_per_scu = ore_prices.get(ore.upper(), 0)
+                        total_value = quantity * price_per_scu
+                        ore_breakdown[ore] = {
+                            'quantity': quantity,
+                            'price_per_scu': price_per_scu,
+                            'total_value': total_value
+                        }
+            
             return {
                 "event": dict(event),
                 "payroll": dict(payroll),
@@ -728,7 +759,8 @@ async def get_payroll_summary(event_id: str):
                     "total_payout_auec": float(payroll['total_value_auec']),
                     "average_payout_auec": float(payroll['total_value_auec']) / len(payouts) if payouts else 0,
                     "total_scu_collected": payroll['total_scu_collected'],
-                    "mining_yields": payroll['mining_yields']
+                    "mining_yields": mining_yields,
+                    "ore_breakdown": ore_breakdown
                 }
             }
             
@@ -813,42 +845,114 @@ def create_enhanced_pdf_header(story, event, styles):
     
     return story
 
-# @app.get("/admin/payroll-export/{event_id}")
-# TEMPORARILY DISABLED - PDF export has syntax errors
-#async def export_payroll_pdf_disabled(event_id: str):
-#    """Export payroll summary as PDF."""
-#    try:
-#        pool = await get_db_pool()
-#        async with pool.acquire() as conn:
-#            # Get event information
-#            event = await conn.fetchrow("""
-#                SELECT event_id, event_name, event_type, organizer_name, 
-#                       started_at, ended_at, total_participants, total_duration_minutes
-#                FROM events 
-#                WHERE event_id = $1
-#            """, event_id)
+@app.get("/admin/payroll-export/{event_id}")
+async def export_payroll_pdf(event_id: str):
+    """Export payroll summary as CSV."""
+    try:
+        pool = await get_db_pool()
+        if pool is None:
+            raise HTTPException(status_code=503, detail="Database not available")
             
-#            if not event:
-#                raise HTTPException(status_code=404, detail="Event not found")
+        async with pool.acquire() as conn:
+            # Get event information
+            event = await conn.fetchrow("""
+                SELECT event_id, event_name, event_type, organizer_name, 
+                       started_at, ended_at, total_participants, total_duration_minutes
+                FROM events 
+                WHERE event_id = $1
+            """, event_id)
             
-#            # Get payroll information
-#            payroll = await conn.fetchrow("""
-#                SELECT payroll_id, total_value_auec, calculated_by_name, calculated_at
-#                FROM payrolls 
-#                WHERE event_id = $1
-#            """, event_id)
+            if not event:
+                raise HTTPException(status_code=404, detail="Event not found")
             
-#            if not payroll:
-#                raise HTTPException(status_code=404, detail="Payroll not found for this event")
+            # Get payroll information
+            payroll = await conn.fetchrow("""
+                SELECT payroll_id, total_value_auec, calculated_by_name, calculated_at,
+                       total_scu_collected, ore_prices_used, mining_yields
+                FROM payrolls 
+                WHERE event_id = $1
+            """, event_id)
             
-#            # Get individual payouts
-#            payouts = await conn.fetch("""
-#                SELECT username, participation_minutes, base_payout_auec, 
-#                       final_payout_auec, is_donor
-#                FROM payouts 
-#                WHERE payroll_id = $1
-#                ORDER BY final_payout_auec DESC
-#            """, payroll['payroll_id'])
+            if not payroll:
+                raise HTTPException(status_code=404, detail="Payroll not found for this event")
+            
+            # Get individual payouts
+            payouts = await conn.fetch("""
+                SELECT username, participation_minutes, base_payout_auec, 
+                       final_payout_auec, is_donor
+                FROM payouts 
+                WHERE payroll_id = $1
+                ORDER BY final_payout_auec DESC
+            """, payroll['payroll_id'])
+            
+            # Generate CSV content
+            import io
+            import csv
+            import json
+            from datetime import datetime
+            
+            csv_buffer = io.StringIO()
+            writer = csv.writer(csv_buffer)
+            
+            # Write header information
+            writer.writerow(['Red Legion Payroll Export'])
+            writer.writerow(['Generated:', datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC')])
+            writer.writerow(['Event ID:', event['event_id']])
+            writer.writerow(['Event Name:', event.get('event_name', 'N/A')])
+            writer.writerow(['Event Type:', event['event_type'].title() if event['event_type'] else 'N/A'])
+            writer.writerow(['Organizer:', event.get('organizer_name', 'N/A')])
+            writer.writerow(['Total Value:', f"{float(payroll['total_value_auec']):,.0f} aUEC"])
+            writer.writerow(['Total SCU:', f"{float(payroll.get('total_scu_collected', 0)):,.0f}"])
+            writer.writerow([])  # Empty row
+            
+            # Write ore quantities if available
+            if payroll.get('mining_yields'):
+                try:
+                    ore_quantities = json.loads(payroll['mining_yields'])
+                    writer.writerow(['Ore Quantities:'])
+                    for ore, quantity in ore_quantities.items():
+                        writer.writerow(['', ore, f"{quantity:,.0f} SCU"])
+                    writer.writerow([])  # Empty row
+                except (json.JSONDecodeError, TypeError):
+                    pass
+            
+            # Write payouts header
+            writer.writerow(['Individual Payouts:'])
+            writer.writerow(['Username', 'Time (min)', 'Base Payout (aUEC)', 'Final Payout (aUEC)', 'Status'])
+            
+            # Write individual payouts
+            for payout in payouts:
+                status = 'Donor' if payout['is_donor'] else 'Standard'
+                writer.writerow([
+                    payout['username'],
+                    payout['participation_minutes'],
+                    f"{float(payout['base_payout_auec']):,.0f}",
+                    f"{float(payout['final_payout_auec']):,.0f}",
+                    status
+                ])
+            
+            # Get CSV content
+            csv_content = csv_buffer.getvalue()
+            csv_buffer.close()
+            
+            # Return as downloadable file
+            from fastapi.responses import Response
+            filename = f"payroll_{event_id}_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.csv"
+            
+            return Response(
+                content=csv_content,
+                media_type="application/octet-stream",
+                headers={
+                    "Content-Disposition": f"attachment; filename={filename}",
+                    "Content-Type": "application/octet-stream"
+                }
+            )
+            
+    except HTTPException:
+        raise  # Re-raise HTTP exceptions
+    except Exception as e:
+        logger.error(f"Error generating export for {event_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Export generation error: {str(e)}")
             
 #            # Generate PDF
 #            pdf_buffer = io.BytesIO()
@@ -992,74 +1096,155 @@ def create_enhanced_pdf_header(story, event, styles):
 #        logger.error(f"Error generating PDF for {event_id}: {e}")
 #        raise HTTPException(status_code=500, detail=f"PDF generation error: {str(e)}")
 
-## @app.post("/payroll/{event_id}/export-pdf")
-## TEMPORARILY DISABLED - PDF export has syntax errors
-#async def export_calculated_payroll_pdf_disabled(event_id: str, request: PayrollCalculationRequest):
-#    """Generate PDF from calculated payroll data without requiring database storage."""
-#    try:
-#        pool = await get_db_pool()
-#        async with pool.acquire() as conn:
-#            # Get event data
-#            event = await conn.fetchrow("""
-#                SELECT * FROM events WHERE event_id = $1
-#            """, event_id)
+@app.post("/payroll/{event_id}/export-pdf")
+async def export_calculated_payroll_pdf(event_id: str, request: PayrollCalculationRequest):
+    """Generate CSV export from calculated payroll data without requiring database storage."""
+    try:
+        # Use the existing calculate_payroll logic to get the data
+        from fastapi.encoders import jsonable_encoder
+        
+        # Create a temporary request to get calculation data
+        temp_request = PayrollCalculationRequest(
+            ore_quantities=request.ore_quantities,
+            custom_prices=request.custom_prices,
+            donating_users=request.donating_users
+        )
+        
+        # Get the calculated payroll data by calling the existing endpoint logic
+        pool = await get_db_pool()
+        if pool is None:
+            raise HTTPException(status_code=503, detail="Database not available")
             
-#            if not event:
-#                raise HTTPException(status_code=404, detail="Event not found")
+        async with pool.acquire() as conn:
+            # Get event data
+            event = await conn.fetchrow("""
+                SELECT * FROM events WHERE event_id = $1
+            """, event_id)
             
-#            # Get participants (same as in calculate_payroll)
-#            participants = await conn.fetch("""
-#                SELECT user_id, COALESCE(display_name, username) as username, 
-#                       SUM(duration_minutes) as participation_minutes, 
-#                       (SUM(duration_minutes)::float / NULLIF((SELECT SUM(duration_minutes) FROM participation WHERE event_id = $1), 0) * 100)::int as participation_percentage
-#                FROM participation 
-#                WHERE event_id = $1
-#                GROUP BY user_id, COALESCE(display_name, username)
-#                ORDER BY SUM(duration_minutes) DESC
-#            """, event_id)
+            if not event:
+                raise HTTPException(status_code=404, detail="Event not found")
             
-#            # Get UEX prices and calculate total value (same logic as calculate_payroll)
-#            uex_prices = await get_uex_prices()
-#            prices = request.custom_prices or uex_prices
-#            total_value = sum(quantity * prices.get(ore.upper(), 0) for ore, quantity in request.ore_quantities.items())
-#            total_scu = sum(quantity for quantity in request.ore_quantities.values())
+            # Get participants
+            participants = await conn.fetch("""
+                SELECT user_id, COALESCE(display_name, username) as username, 
+                       SUM(duration_minutes) as participation_minutes, 
+                       (SUM(duration_minutes)::float / NULLIF((SELECT SUM(duration_minutes) FROM participation WHERE event_id = $1), 0) * 100)::int as participation_percentage
+                FROM participation 
+                WHERE event_id = $1
+                GROUP BY user_id, COALESCE(display_name, username)
+                ORDER BY SUM(duration_minutes) DESC
+            """, event_id)
             
-#            # Calculate payouts with donation logic (same as calculate_payroll)
-#            donating_users = request.donating_users or []
-#            donating_user_ids = [str(user_id) for user_id in donating_users]
+            # Get prices and calculate total value
+            uex_prices = await get_uex_prices()
+            prices = request.custom_prices or uex_prices
+            total_value = sum(quantity * prices.get(ore.upper(), 0) for ore, quantity in request.ore_quantities.items())
+            total_scu = sum(quantity for quantity in request.ore_quantities.values())
             
-#            non_donating_participants = [p for p in participants if str(p['user_id']) not in donating_user_ids]
-#            donating_participants = [p for p in participants if str(p['user_id']) in donating_user_ids]
+            # Calculate payouts with donation logic
+            donating_users = request.donating_users or []
+            donating_user_ids = [str(user_id) for user_id in donating_users]
             
-#            total_non_donating_minutes = sum(p['participation_minutes'] or 0 for p in non_donating_participants)
+            non_donating_participants = [p for p in participants if str(p['user_id']) not in donating_user_ids]
+            donating_participants = [p for p in participants if str(p['user_id']) in donating_user_ids]
             
-#            payouts = []
+            total_non_donating_minutes = sum(p['participation_minutes'] or 0 for p in non_donating_participants)
             
-#            # Calculate payouts for non-donating participants
-#            if total_non_donating_minutes > 0:
-#                for participant in non_donating_participants:
-#                    participation_mins = participant['participation_minutes'] or 0
-#                    redistribution_percentage = participation_mins / total_non_donating_minutes
-#                    individual_payout = total_value * redistribution_percentage
+            payouts = []
+            
+            # Calculate payouts for non-donating participants
+            if total_non_donating_minutes > 0:
+                for participant in non_donating_participants:
+                    participation_mins = participant['participation_minutes'] or 0
+                    redistribution_percentage = participation_mins / total_non_donating_minutes
+                    individual_payout = total_value * redistribution_percentage
                     
-#                    payouts.append({
-#                        'username': participant['username'],
-#                        'participation_minutes': participation_mins,
-#                        'base_payout_auec': total_value * ((participant['participation_percentage'] or 0) / 100),
-#                        'final_payout_auec': round(individual_payout, 2),
-#                        'is_donor': False
-#                    })
+                    payouts.append({
+                        'username': participant['username'],
+                        'participation_minutes': participation_mins,
+                        'participation_percentage': participant['participation_percentage'] or 0,
+                        'base_payout_auec': round(total_value * ((participant['participation_percentage'] or 0) / 100), 2),
+                        'final_payout_auec': round(individual_payout, 2),
+                        'is_donor': False
+                    })
             
-#            # Add donating participants with 0 payout
-#            for participant in donating_participants:
-#                base_payout = total_value * ((participant['participation_percentage'] or 0) / 100)
-#                payouts.append({
-#                    'username': participant['username'],
-#                    'participation_minutes': participant['participation_minutes'] or 0,
-#                    'base_payout_auec': base_payout,
-#                    'final_payout_auec': 0.0,
-#                    'is_donor': True
-#                })
+            # Add donating participants with 0 payout
+            for participant in donating_participants:
+                base_payout = total_value * ((participant['participation_percentage'] or 0) / 100)
+                payouts.append({
+                    'username': participant['username'],
+                    'participation_minutes': participant['participation_minutes'] or 0,
+                    'participation_percentage': participant['participation_percentage'] or 0,
+                    'base_payout_auec': round(base_payout, 2),
+                    'final_payout_auec': 0.0,
+                    'is_donor': True
+                })
+        
+        # Generate CSV content
+        import io
+        import csv
+        from datetime import datetime
+        
+        csv_buffer = io.StringIO()
+        writer = csv.writer(csv_buffer)
+        
+        # Write header information
+        writer.writerow(['Red Legion Payroll Export'])
+        writer.writerow(['Generated:', datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC')])
+        writer.writerow(['Event ID:', event['event_id']])
+        writer.writerow(['Event Name:', event.get('event_name', 'N/A')])
+        writer.writerow(['Event Type:', event['event_type'].title() if event['event_type'] else 'N/A'])
+        writer.writerow(['Organizer:', event.get('organizer_name', 'N/A')])
+        writer.writerow(['Total Value:', f"{total_value:,.0f} aUEC"])
+        writer.writerow(['Total SCU:', f"{total_scu:,.0f}"])
+        writer.writerow([])  # Empty row
+        
+        # Write ore quantities
+        writer.writerow(['Ore Quantities:'])
+        for ore, quantity in request.ore_quantities.items():
+            price = prices.get(ore.upper(), 0)
+            value = quantity * price
+            writer.writerow(['', ore, f"{quantity:,.0f} SCU", f"{price:,.0f} aUEC/SCU", f"{value:,.0f} aUEC"])
+        writer.writerow([])  # Empty row
+        
+        # Write payouts header
+        writer.writerow(['Individual Payouts:'])
+        writer.writerow(['Username', 'Time (min)', 'Time %', 'Base Payout (aUEC)', 'Final Payout (aUEC)', 'Status'])
+        
+        # Write individual payouts
+        for payout in sorted(payouts, key=lambda x: x['final_payout_auec'], reverse=True):
+            status = 'Donor' if payout['is_donor'] else 'Standard'
+            writer.writerow([
+                payout['username'],
+                payout['participation_minutes'],
+                f"{payout['participation_percentage']}%",
+                f"{payout['base_payout_auec']:,.0f}",
+                f"{payout['final_payout_auec']:,.0f}",
+                status
+            ])
+        
+        # Get CSV content
+        csv_content = csv_buffer.getvalue()
+        csv_buffer.close()
+        
+        # Return as downloadable file
+        from fastapi.responses import Response
+        filename = f"payroll_{event_id}_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.csv"
+        
+        return Response(
+            content=csv_content,
+            media_type="application/octet-stream",
+            headers={
+                "Content-Disposition": f"attachment; filename={filename}",
+                "Content-Type": "application/octet-stream"
+            }
+        )
+        
+    except HTTPException:
+        raise  # Re-raise HTTP exceptions
+    except Exception as e:
+        logger.error(f"Error generating export for {event_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Export generation error: {str(e)}")
             
 #            # Generate PDF using enhanced formatting
 #            pdf_buffer = io.BytesIO()
@@ -1237,18 +1422,22 @@ async def create_test_event(event_type: str):
         
         async with pool.acquire() as conn:
             async with conn.transaction():
+                # Import needed modules for database path
+                import random as rand
+                from datetime import datetime, timedelta
+                
                 # Generate random event data
                 event_id = generate_event_id()
-                num_participants = random.randint(5, 25)
-                duration_hours = random.randint(1, 7)
+                num_participants = rand.randint(5, 25)
+                duration_hours = rand.randint(1, 7)
                 duration_minutes = duration_hours * 60
                 
                 # Random start time between 1-30 days ago
-                days_ago = random.randint(1, 30)
+                days_ago = rand.randint(1, 30)
                 started_at = datetime.utcnow() - timedelta(days=days_ago)
                 ended_at = started_at + timedelta(hours=duration_hours)
                 
-                event_name = f"Test {event_type.title()} Op {random.randint(100, 999)}"
+                event_name = f"Test {event_type.title()} Op {rand.randint(100, 999)}"
                 
                 # Generate realistic Discord display names
                 test_display_names = [
@@ -1257,8 +1446,8 @@ async def create_test_event(event_type: str):
                     "VoidRunner", "AsteroidAce", "QuantumMiner", "StellarSalvage",
                     "SpaceRanger", "CosmicCrawler", "MetalHarvester", "SystemScanner"
                 ]
-                organizer_name = random.choice(test_display_names)
-                organizer_id = random.randint(100000000000000000, 999999999999999999)
+                organizer_name = rand.choice(test_display_names)
+                organizer_id = rand.randint(100000000000000000, 999999999999999999)
                 
                 # Create the event
                 await conn.execute("""
@@ -1279,12 +1468,12 @@ async def create_test_event(event_type: str):
                 
                 for user in fake_users:
                     # Random participation time (15-240 minutes)
-                    participation_minutes = random.randint(15, min(240, duration_minutes))
+                    participation_minutes = rand.randint(15, min(240, duration_minutes))
                     total_participation_time += participation_minutes
                     
                     # Random join time within event duration
                     max_join_offset = max(1, duration_minutes - participation_minutes)
-                    join_offset = random.randint(0, max_join_offset)
+                    join_offset = rand.randint(0, max_join_offset)
                     joined_at = started_at + timedelta(minutes=join_offset)
                     left_at = joined_at + timedelta(minutes=participation_minutes)
                     
@@ -1324,11 +1513,15 @@ async def create_test_event(event_type: str):
 
 def generate_event_id():
     """Generate event ID matching pattern used by payroll system: sm-[a-z0-9]{6}"""
-    suffix = ''.join(random.choices(string.ascii_lowercase + string.digits, k=6))
+    import random as rand
+    import string
+    suffix = ''.join(rand.choices(string.ascii_lowercase + string.digits, k=6))
     return f"sm-{suffix}"
 
 async def generate_fake_participants(count: int):
     """Generate fake participant data for testing."""
+    import random as rand
+    
     fake_usernames = [
         "MinerAlpha", "SalvageKing", "RedLegionPilot", "SpaceRanger", "StarCollector",
         "OreMaster", "QuantumMiner", "AsteroidHunter", "CrystalSeeker", "VoidRunner",
@@ -1351,7 +1544,7 @@ async def generate_fake_participants(count: int):
     
     for i in range(count):
         # Ensure unique usernames
-        username = random.choice(fake_usernames)
+        username = rand.choice(fake_usernames)
         counter = 1
         original_username = username
         while username in used_names:
@@ -1359,8 +1552,8 @@ async def generate_fake_participants(count: int):
             counter += 1
         used_names.add(username)
         
-        display_name = random.choice(fake_display_names)
-        user_id = random.randint(100000000000000000, 999999999999999999)
+        display_name = rand.choice(fake_display_names)
+        user_id = rand.randint(100000000000000000, 999999999999999999)
         
         participants.append({
             'user_id': user_id,

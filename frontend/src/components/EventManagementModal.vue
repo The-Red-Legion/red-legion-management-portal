@@ -19,6 +19,8 @@
 
         <!-- Always show control buttons when not loading -->
         <div v-else>
+          <!-- Debug: Show component state -->
+          <div class="mb-2 text-xs text-yellow-400">Debug: Loading={{ loading }}, Events={{ events.length }}</div>
           <div class="mb-4 flex justify-between items-center">
             <p class="text-space-gray-300">Total Events: {{ events.length }}</p>
             <div class="flex space-x-3">
@@ -177,11 +179,15 @@ export default {
   name: 'EventManagementModal',
   emits: ['close'],
   setup() {
+    console.log('EventManagementModal: Component setup() called')
     const loading = ref(true)
     const events = ref([])
     const deletingEvents = ref([])
     const creatingTestEvent = ref(false)
     const refreshingUexCache = ref(false)
+    
+    console.log('EventManagementModal: Initial loading state:', loading.value)
+    console.log('EventManagementModal: Initial events array:', events.value)
 
     const formatDateTime = (dateString) => {
       if (!dateString) return 'N/A'
@@ -194,20 +200,25 @@ export default {
     }
 
     const loadEvents = async () => {
+      console.log('loadEvents: Starting, setting loading=true')
       loading.value = true
       try {
+        console.log('loadEvents: Fetching events from API')
         // Add cache-busting parameter to ensure fresh data
         const response = await fetch(`http://localhost:8000/admin/events?_t=${Date.now()}`)
+        console.log('loadEvents: Response status:', response.status)
         if (!response.ok) {
           throw new Error(`HTTP error! status: ${response.status}`)
         }
         const data = await response.json()
+        console.log('loadEvents: Data received:', data)
         events.value = data
         console.log('Loaded events:', data.length)
       } catch (error) {
         console.error('Failed to load events:', error)
         alert('Failed to load events. Please try again.')
       } finally {
+        console.log('loadEvents: Finally block, setting loading=false')
         loading.value = false
       }
     }
@@ -327,6 +338,7 @@ export default {
     }
 
     onMounted(() => {
+      console.log('EventManagementModal: onMounted() called, about to call loadEvents()')
       loadEvents()
     })
 
