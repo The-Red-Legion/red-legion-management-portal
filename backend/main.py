@@ -47,7 +47,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Database configuration
+# Database configuration - Reload environment
+load_dotenv()  
 DATABASE_URL = os.getenv("DATABASE_URL_LOCAL", os.getenv("DATABASE_URL"))
 DISCORD_CLIENT_ID = os.getenv("DISCORD_CLIENT_ID")
 DISCORD_CLIENT_SECRET = os.getenv("DISCORD_CLIENT_SECRET")
@@ -70,6 +71,37 @@ class EventCreationRequest(BaseModel):
 
 # Database connection pool
 db_pool = None
+
+# In-memory storage for mock events (when database is not available)
+# Shared mock events storage
+mock_events = []
+mock_events_initialized = False
+
+def get_shared_mock_events():
+    """Get or initialize shared mock events data."""
+    global mock_events, mock_events_initialized
+    from datetime import datetime, timedelta
+    
+    # Initialize with default events only once
+    if not mock_events_initialized:
+        mock_events = [
+            {
+                'event_id': 'evt_001',
+                'event_name': 'Sunday Mining Operation',
+                'event_type': 'mining',
+                'organizer_name': 'CommanderRed',
+                'started_at': (datetime.now() - timedelta(hours=4)).isoformat(),
+                'ended_at': (datetime.now() - timedelta(hours=2)).isoformat(),
+                'total_duration_minutes': 120,
+                'participant_count': 8,
+                'total_participants': 8,
+                'status': 'completed',
+                'has_payroll': False
+            }
+        ]
+        mock_events_initialized = True
+    
+    return mock_events
 
 async def get_db_pool():
     """Get database connection pool."""
@@ -159,29 +191,7 @@ async def get_events():
         pool = await get_db_pool()
         if pool is None:
             # Return mock data when database is not available
-            from datetime import datetime, timedelta
-            return [
-                {
-                    'event_id': 'evt_001',
-                    'event_name': 'Sunday Mining Operation',
-                    'event_type': 'mining',
-                    'organizer_name': 'CommanderRed',
-                    'started_at': (datetime.now() - timedelta(hours=2)).isoformat(),
-                    'ended_at': None,
-                    'total_duration_minutes': 120,
-                    'participant_count': 8
-                },
-                {
-                    'event_id': 'evt_002',
-                    'event_name': 'Salvage Operation Alpha',
-                    'event_type': 'salvage',
-                    'organizer_name': 'SalvageKing',
-                    'started_at': (datetime.now() - timedelta(days=1)).isoformat(),
-                    'ended_at': (datetime.now() - timedelta(days=1, hours=-3)).isoformat(),
-                    'total_duration_minutes': 180,
-                    'participant_count': 6
-                }
-            ]
+            return get_shared_mock_events()
         
         async with pool.acquire() as conn:
             # Query events table with real-time participant count for live events
@@ -540,32 +550,17 @@ async def get_all_events():
         pool = await get_db_pool()
         if pool is None:
             # Return mock data when database is not available
-            from datetime import datetime, timedelta
+            mock_events = get_shared_mock_events()
+            
+            # Return events with admin fields
             return [
                 {
-                    'event_id': 'evt_001',
-                    'event_name': 'Sunday Mining Operation',
-                    'event_type': 'mining',
-                    'organizer_name': 'CommanderRed',
-                    'started_at': (datetime.now() - timedelta(hours=2)).isoformat(),
-                    'ended_at': None,
-                    'total_duration_minutes': 120,
-                    'total_participants': 8,
-                    'status': 'active',
-                    'has_payroll': False
-                },
-                {
-                    'event_id': 'evt_002',
-                    'event_name': 'Salvage Operation Alpha',
-                    'event_type': 'salvage',
-                    'organizer_name': 'SalvageKing',
-                    'started_at': (datetime.now() - timedelta(days=1)).isoformat(),
-                    'ended_at': (datetime.now() - timedelta(days=1, hours=-3)).isoformat(),
-                    'total_duration_minutes': 180,
-                    'total_participants': 6,
-                    'status': 'completed',
-                    'has_payroll': True
+                    **event,
+                    'total_participants': event.get('participant_count', event.get('total_participants', 0)),
+                    'status': event.get('status', 'completed' if event.get('ended_at') else 'active'),
+                    'payroll_calculated': event.get('has_payroll', bool(event.get('ended_at')))
                 }
+                for event in mock_events
             ]
         
         async with pool.acquire() as conn:
@@ -602,6 +597,26 @@ async def delete_event(event_id: str):
     """Delete an event and all associated data."""
     try:
         pool = await get_db_pool()
+        if pool is None:
+            # Return mock success response when database is not available
+            # Ensure mock_events is initialized
+            get_shared_mock_events()
+            global mock_events
+            
+            # Actually remove the event from mock storage
+            initial_count = len(mock_events)
+            mock_events = [event for event in mock_events if event['event_id'] != event_id]
+            final_count = len(mock_events)
+            
+            if initial_count == final_count:
+                raise HTTPException(status_code=404, detail="Event not found")
+            
+            return {
+                'success': True,
+                'message': f'Event {event_id} deleted successfully (mock mode)',
+                'event_id': event_id
+            }
+        
         async with pool.acquire() as conn:
             # Start a transaction
             async with conn.transaction():
@@ -1171,6 +1186,55 @@ async def create_test_event(event_type: str):
     
     try:
         pool = await get_db_pool()
+        if pool is None:
+            # Return mock success response when database is not available
+            import random
+            import uuid
+            from datetime import datetime, timedelta
+            
+            # Ensure mock_events is initialized
+            get_shared_mock_events()
+            global mock_events
+            
+            event_id = f'test_{uuid.uuid4().hex[:8]}'
+            num_participants = random.randint(5, 25)
+            duration_hours = random.randint(1, 7)
+            event_name = f'Test {event_type.title()} Op {random.randint(100, 999)}'
+            
+            # Create new event object
+            new_event = {
+                'event_id': event_id,
+                'event_name': event_name,
+                'event_type': event_type,
+                'organizer_name': 'TestBot',
+                'started_at': (datetime.now() - timedelta(hours=duration_hours)).isoformat(),
+                'ended_at': datetime.now().isoformat(),
+                'total_duration_minutes': duration_hours * 60,
+                'participant_count': num_participants,
+                'total_participants': num_participants,
+                'status': 'completed',
+                'has_payroll': False
+            }
+            
+            # Add to mock storage
+            mock_events.append(new_event)
+            
+            return {
+                'success': True,
+                'message': f'Test {event_type} event created successfully (mock mode)',
+                'event': {
+                    'event_id': event_id,
+                    'event_name': event_name,
+                    'event_type': event_type,
+                    'organizer_name': 'TestBot',
+                    'participants': num_participants,
+                    'duration_hours': duration_hours,
+                    'started_at': new_event['started_at'],
+                    'ended_at': new_event['ended_at'],
+                    'status': 'completed'
+                }
+            }
+        
         async with pool.acquire() as conn:
             async with conn.transaction():
                 # Generate random event data
