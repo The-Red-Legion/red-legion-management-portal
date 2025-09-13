@@ -74,21 +74,29 @@ export default {
 
 
     onMounted(() => {
+      console.log('🚀 App mounted, checking authentication...')
+      
       // Check URL params for OAuth callback
       const urlParams = new URLSearchParams(window.location.search)
       const username = urlParams.get('user')
       const id = urlParams.get('id')
+      const roles = urlParams.get('roles')
+      
+      console.log('📋 URL params:', { username, id, roles })
       
       if (username && id) {
-        const userData = { username, id }
+        const userData = { username, id, roles: roles ? roles.split('%20') : [] }
+        console.log('✅ Found OAuth params, logging in user:', userData)
         handleLogin(userData)
         // Clean up URL
         window.history.replaceState({}, document.title, '/')
       } else {
         // Check localStorage
         const savedUser = localStorage.getItem('red_legion_user')
+        console.log('💾 Checking localStorage:', savedUser)
         if (savedUser) {
           user.value = JSON.parse(savedUser)
+          console.log('✅ Restored user from localStorage:', user.value)
         }
       }
     })

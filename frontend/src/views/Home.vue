@@ -1,6 +1,11 @@
 <template>
   <!-- Main Content -->
   <main class="max-w-7xl mx-auto px-4 py-8">
+    <!-- Debug info -->
+    <div class="bg-red-500 text-white p-4 mb-4 rounded">
+      DEBUG: User = {{ user ? JSON.stringify(user) : 'null' }}
+    </div>
+    
     <LoginPage v-if="!user" @login="handleLogin" />
     <PayrollWizard v-else :user="user" />
   </main>
