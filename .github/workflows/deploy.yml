@@ -165,7 +165,7 @@ jobs:
                 proxy_send_timeout 300;
             }
 
-            # Auth routes - forward to backend
+            # Auth routes - forward to backend (more specific, must come BEFORE / route)
             location /auth/ {
                 proxy_pass http://127.0.0.1:8000;
                 proxy_http_version 1.1;
@@ -178,7 +178,7 @@ jobs:
                 proxy_send_timeout 300;
             }
 
-            # Frontend routes (Vue.js SPA)
+            # Frontend routes (Vue.js SPA) - catch-all, must come LAST
             location / {
                 root /opt/red-legion-website/frontend/dist;
                 try_files \$uri \$uri/ /index.html;
