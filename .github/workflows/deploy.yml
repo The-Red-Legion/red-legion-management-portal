@@ -33,12 +33,15 @@ jobs:
         python -m pip install --upgrade pip
         pip install ansible
 
-    - name: Setup Google Cloud
+    - name: Authenticate to Google Cloud
+      uses: google-github-actions/auth@v1
+      with:
+        credentials_json: ${{ secrets.GCP_CREDENTIALS }}
+
+    - name: Setup Google Cloud SDK
       uses: google-github-actions/setup-gcloud@v1
       with:
-        service_account_key: ${{ secrets.GCP_CREDENTIALS }}
         project_id: ${{ secrets.GCP_PROJECT_ID }}
-        export_default_credentials: true
 
     - name: Build frontend
       run: |
@@ -68,9 +71,6 @@ jobs:
 
     - name: Deploy with GCloud
       run: |
-        # Authenticate with service account
-        gcloud auth activate-service-account --key-file=$GOOGLE_APPLICATION_CREDENTIALS
-        
         # Copy deployment package to VM
         gcloud compute scp --recurse deployment-package/* ubuntu@arccorp-web-server:/tmp/deployment/ --zone us-central1-a
         
