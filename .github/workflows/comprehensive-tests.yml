@@ -1,0 +1,271 @@
+name: Comprehensive Test Suite
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+  workflow_dispatch:
+  schedule:
+    # Run comprehensive tests daily at 2 AM UTC
+    - cron: '0 2 * * *'
+
+jobs:
+  infrastructure-health-check:
+    runs-on: ubuntu-latest
+    name: Infrastructure Health Check
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install asyncpg httpx pytest pytest-asyncio
+    
+    - name: Run Infrastructure Health Checks
+      env:
+        DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        DISCORD_CLIENT_ID: ${{ secrets.DISCORD_CLIENT_ID }}
+        DISCORD_CLIENT_SECRET: ${{ secrets.DISCORD_CLIENT_SECRET }}
+        BOT_API_URL: ${{ vars.BOT_API_URL || 'http://10.128.0.2:8001' }}
+      run: python tests/infrastructure_health_check.py
+
+  unit-tests:
+    runs-on: ubuntu-latest
+    name: Unit Tests
+    needs: infrastructure-health-check
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install pytest pytest-asyncio pytest-cov httpx asyncpg PyJWT
+        pip install -r requirements.txt
+    
+    - name: Run Authentication Tests
+      run: |
+        python -m pytest tests/test_authentication.py -v --cov=. --cov-report=term-missing
+    
+    - name: Run Database Tests
+      run: |
+        python -m pytest tests/test_database.py -v --cov=. --cov-report=term-missing
+    
+    - name: Generate Coverage Report
+      run: |
+        python -m pytest tests/test_authentication.py tests/test_database.py --cov=. --cov-report=xml --cov-report=html
+    
+    - name: Upload Coverage Report
+      uses: actions/upload-artifact@v4
+      with:
+        name: unit-test-coverage
+        path: |
+          htmlcov/
+          coverage.xml
+
+  oauth-integration-tests:
+    runs-on: ubuntu-latest
+    name: OAuth Integration Tests
+    needs: unit-tests
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install pytest pytest-asyncio httpx asyncpg PyJWT
+        pip install -r requirements.txt
+    
+    - name: Run OAuth Integration Tests
+      env:
+        DISCORD_CLIENT_ID: "test_client_id_123456789"
+        DISCORD_CLIENT_SECRET: "test_client_secret_mock"
+        JWT_SECRET_KEY: "test_jwt_secret_for_integration_testing_only"
+        OAUTH_REDIRECT_URI: "https://arccorp-web.redlegion.org/auth/callback"
+        DATABASE_URL: "postgresql://test_user:test_pass@localhost:5432/test_db"
+      run: |
+        python -m pytest tests/test_oauth_integration.py -v --tb=short
+    
+    - name: Generate OAuth Test Report
+      if: always()
+      run: |
+        python -m pytest tests/test_oauth_integration.py --junitxml=oauth-integration-report.xml
+    
+    - name: Upload OAuth Test Results
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: oauth-integration-test-results
+        path: oauth-integration-report.xml
+
+  api-tests:
+    runs-on: ubuntu-latest
+    name: API Tests
+    needs: oauth-integration-tests
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install pytest pytest-asyncio httpx fastapi PyJWT
+        pip install -r requirements.txt
+    
+    - name: Run API Endpoint Tests
+      env:
+        JWT_SECRET_KEY: "test_jwt_secret_for_api_testing"
+        DISCORD_CLIENT_ID: "test_client_id_123456789"
+        DISCORD_CLIENT_SECRET: "test_client_secret_mock"
+        DATABASE_URL: "postgresql://test_user:test_pass@localhost:5432/test_db"
+      run: |
+        python -m pytest tests/test_api_endpoints.py -v --tb=short
+    
+    - name: Generate API Test Report
+      if: always()
+      run: |
+        python -m pytest tests/test_api_endpoints.py --junitxml=api-test-report.xml --cov=. --cov-report=xml
+    
+    - name: Upload API Test Results
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: api-test-results
+        path: |
+          api-test-report.xml
+          coverage.xml
+
+  e2e-tests:
+    runs-on: ubuntu-latest
+    name: End-to-End Tests
+    needs: api-tests
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+    
+    - name: Install Python dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install pytest pytest-asyncio playwright
+        pip install -r requirements.txt
+    
+    - name: Install Playwright browsers
+      run: |
+        playwright install chromium
+        playwright install-deps
+    
+    - name: Run E2E Tests
+      env:
+        BASE_URL: "https://arccorp-web.redlegion.org"
+        HEADLESS: "true"
+        SLOWMO: "0"
+        TIMEOUT: "30000"
+      run: |
+        python -m pytest tests/test_e2e_playwright.py -v --tb=short --maxfail=5
+    
+    - name: Generate E2E Test Report
+      if: always()
+      run: |
+        python -m pytest tests/test_e2e_playwright.py --junitxml=e2e-test-report.xml
+    
+    - name: Upload E2E Test Results
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: e2e-test-results
+        path: e2e-test-report.xml
+    
+    - name: Upload Screenshots on Failure
+      if: failure()
+      uses: actions/upload-artifact@v4
+      with:
+        name: playwright-screenshots
+        path: test-results/
+
+  test-summary:
+    runs-on: ubuntu-latest
+    name: Test Summary
+    needs: [infrastructure-health-check, unit-tests, oauth-integration-tests, api-tests, e2e-tests]
+    if: always()
+    
+    steps:
+    - name: Download all test artifacts
+      uses: actions/download-artifact@v4
+      with:
+        path: test-results/
+    
+    - name: Display Test Summary
+      run: |
+        echo "# 🧪 Comprehensive Test Suite Results" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "## Test Status Overview" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        
+        if [ "${{ needs.infrastructure-health-check.result }}" == "success" ]; then
+          echo "✅ **Infrastructure Health Check**: PASSED" >> $GITHUB_STEP_SUMMARY
+        else
+          echo "❌ **Infrastructure Health Check**: FAILED" >> $GITHUB_STEP_SUMMARY
+        fi
+        
+        if [ "${{ needs.unit-tests.result }}" == "success" ]; then
+          echo "✅ **Unit Tests**: PASSED" >> $GITHUB_STEP_SUMMARY
+        else
+          echo "❌ **Unit Tests**: FAILED" >> $GITHUB_STEP_SUMMARY
+        fi
+        
+        if [ "${{ needs.oauth-integration-tests.result }}" == "success" ]; then
+          echo "✅ **OAuth Integration Tests**: PASSED" >> $GITHUB_STEP_SUMMARY
+        else
+          echo "❌ **OAuth Integration Tests**: FAILED" >> $GITHUB_STEP_SUMMARY
+        fi
+        
+        if [ "${{ needs.api-tests.result }}" == "success" ]; then
+          echo "✅ **API Tests**: PASSED" >> $GITHUB_STEP_SUMMARY
+        else
+          echo "❌ **API Tests**: FAILED" >> $GITHUB_STEP_SUMMARY
+        fi
+        
+        if [ "${{ needs.e2e-tests.result }}" == "success" ]; then
+          echo "✅ **End-to-End Tests**: PASSED" >> $GITHUB_STEP_SUMMARY
+        else
+          echo "❌ **End-to-End Tests**: FAILED" >> $GITHUB_STEP_SUMMARY
+        fi
+        
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "## Test Artifacts" >> $GITHUB_STEP_SUMMARY
+        echo "- Coverage reports and test results are available in the artifacts section" >> $GITHUB_STEP_SUMMARY
+        echo "- Check individual job logs for detailed test output" >> $GITHUB_STEP_SUMMARY
+    
+    - name: Upload Combined Test Results
+      uses: actions/upload-artifact@v4
+      with:
+        name: comprehensive-test-results
+        path: test-results/
