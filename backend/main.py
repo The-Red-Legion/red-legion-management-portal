@@ -439,7 +439,7 @@ async def get_events(current_user: UserSession = Depends(get_current_user)):
         raise HTTPException(status_code=500, detail="Database error")
 
 @app.get("/discord/channels")
-async def get_discord_channels(current_user: UserSession = Depends(get_current_user), guild_id: str = "814699481912049704"):
+async def get_discord_channels(guild_id: str = "814699481912049704", current_user: UserSession = Depends(get_current_user)):
     """Get all available Discord voice channels for the guild."""
     try:
         pool = await get_db_pool()
@@ -591,7 +591,7 @@ async def get_discord_channels(current_user: UserSession = Depends(get_current_u
         }
 
 @app.post("/discord/channels/sync")
-async def sync_discord_channels(current_user: UserSession = Depends(get_current_user), guild_id: str = "814699481912049704"):
+async def sync_discord_channels(guild_id: str = "814699481912049704", current_user: UserSession = Depends(get_current_user)):
     """Sync Discord channels from Discord API using bot integration."""
     try:
         pool = await get_db_pool()
@@ -743,7 +743,7 @@ async def cleanup_fake_discord_channels(current_user: UserSession = Depends(get_
         }
 
 @app.get("/events/{event_id}/participants")
-async def get_event_participants(current_user: UserSession = Depends(get_current_user), event_id: str):
+async def get_event_participants(event_id: str, current_user: UserSession = Depends(get_current_user)):
     """Get participants for a specific event with real-time duration for live events."""
     try:
         pool = await get_db_pool()
@@ -804,7 +804,7 @@ async def get_event_participants(current_user: UserSession = Depends(get_current
         raise HTTPException(status_code=500, detail="Database error")
 
 @app.post("/payroll/{event_id}/calculate")
-async def calculate_payroll(current_user: UserSession = Depends(get_current_user), event_id: str, request: PayrollCalculationRequest):
+async def calculate_payroll(event_id: str, request: PayrollCalculationRequest, current_user: UserSession = Depends(get_current_user)):
     """Calculate payroll for an event (simplified version of bot logic)."""
     try:
         pool = await get_db_pool()
@@ -906,7 +906,7 @@ async def calculate_payroll(current_user: UserSession = Depends(get_current_user
         raise HTTPException(status_code=500, detail="Calculation error")
 
 @app.post("/payroll/{event_id}/finalize")
-async def finalize_payroll(current_user: UserSession = Depends(get_current_user), event_id: str, request: PayrollCalculationRequest):
+async def finalize_payroll(event_id: str, request: PayrollCalculationRequest, current_user: UserSession = Depends(get_current_user)):
     """Save payroll calculation to database and mark as completed."""
     try:
         pool = await get_db_pool()
@@ -1100,7 +1100,7 @@ async def get_all_events(admin_user: UserSession = Depends(get_admin_user)):
         raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
 
 @app.delete("/admin/events/{event_id}")
-async def delete_event(admin_user: UserSession = Depends(get_admin_user), event_id: str):
+async def delete_event(event_id: str, admin_user: UserSession = Depends(get_admin_user)):
     """Delete an event and all associated data."""
     try:
         pool = await get_db_pool()
@@ -1184,7 +1184,7 @@ async def delete_event(admin_user: UserSession = Depends(get_admin_user), event_
         raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
 
 @app.get("/admin/payroll-summary/{event_id}")
-async def get_payroll_summary(admin_user: UserSession = Depends(get_admin_user), event_id: str):
+async def get_payroll_summary(event_id: str, admin_user: UserSession = Depends(get_admin_user)):
     """Get detailed payroll summary for an event."""
     try:
         pool = await get_db_pool()
@@ -1845,7 +1845,7 @@ async def generate_pdf_with_playwright(event_data: dict, payroll_data: dict) -> 
         raise HTTPException(status_code=500, detail=f"PDF generation failed: {str(e)}")
 
 @app.get("/admin/payroll-export/{event_id}")
-async def export_payroll_pdf(admin_user: UserSession = Depends(get_admin_user), event_id: str):
+async def export_payroll_pdf(event_id: str, admin_user: UserSession = Depends(get_admin_user)):
     """Export payroll summary as PDF using Playwright."""
     try:
         pool = await get_db_pool()
@@ -2115,7 +2115,7 @@ async def export_payroll_pdf(admin_user: UserSession = Depends(get_admin_user), 
 #        raise HTTPException(status_code=500, detail=f"PDF generation error: {str(e)}")
 
 @app.post("/admin/create-test-event/{event_type}")
-async def create_test_event(admin_user: UserSession = Depends(get_admin_user), event_type: str):
+async def create_test_event(event_type: str, admin_user: UserSession = Depends(get_admin_user)):
     """Create a test event with random participants and data."""
     if event_type not in ["mining", "salvage"]:
         raise HTTPException(status_code=400, detail="Event type must be 'mining' or 'salvage'")
@@ -2315,7 +2315,7 @@ async def generate_fake_participants(count: int):
     return participants
 
 @app.post("/events/create")
-async def create_event(current_user: UserSession = Depends(get_current_user), request: EventCreationRequest):
+async def create_event(request: EventCreationRequest, current_user: UserSession = Depends(get_current_user)):
     """Create a new mining event compatible with payroll system."""
     try:
         pool = await get_db_pool()
@@ -2430,7 +2430,7 @@ async def create_event(current_user: UserSession = Depends(get_current_user), re
         raise HTTPException(status_code=500, detail="Failed to create event")
 
 @app.post("/events/{event_id}/start")
-async def start_event(current_user: UserSession = Depends(get_current_user), event_id: str):
+async def start_event(event_id: str, current_user: UserSession = Depends(get_current_user)):
     """Start a scheduled mining event and begin voice tracking."""
     try:
         pool = await get_db_pool()
@@ -2493,7 +2493,7 @@ async def start_event(current_user: UserSession = Depends(get_current_user), eve
 
 
 @app.post("/events/{event_id}/close")
-async def close_event(current_user: UserSession = Depends(get_current_user), event_id: str):
+async def close_event(event_id: str, current_user: UserSession = Depends(get_current_user)):
     """Close a mining event and calculate final stats."""
     try:
         pool = await get_db_pool()
@@ -2617,7 +2617,7 @@ async def get_trading_locations(current_user: UserSession = Depends(get_current_
         raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
 
 @app.get("/material-prices/{material_names}")
-async def get_material_prices(current_user: UserSession = Depends(get_current_user), material_names: str, location_id: int = None):
+async def get_material_prices(material_names: str, location_id: int = None, current_user: UserSession = Depends(get_current_user)):
     """Get material prices, optionally for a specific location.
     
     material_names can be a comma-separated list of material names.
@@ -2677,7 +2677,7 @@ async def get_material_prices(current_user: UserSession = Depends(get_current_us
         raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
 
 @app.get("/location-prices/{location_id}")
-async def get_location_prices(current_user: UserSession = Depends(get_current_user), location_id: int, material_names: str = None):
+async def get_location_prices(location_id: int, material_names: str = None, current_user: UserSession = Depends(get_current_user)):
     """Get all material prices for a specific location.
     
     Optionally filter by material_names (comma-separated).
@@ -2927,7 +2927,7 @@ async def get_scheduled_events(current_user: UserSession = Depends(get_current_u
         raise HTTPException(status_code=500, detail="Failed to fetch scheduled events")
 
 @app.get("/events/{event_id}/live-metrics")
-async def get_event_live_metrics(current_user: UserSession = Depends(get_current_user), event_id: str):
+async def get_event_live_metrics(event_id: str, current_user: UserSession = Depends(get_current_user)):
     """Get real-time metrics for a live event."""
     try:
         pool = await get_db_pool()
@@ -3020,7 +3020,7 @@ async def get_event_live_metrics(current_user: UserSession = Depends(get_current
         raise HTTPException(status_code=500, detail="Failed to fetch live metrics")
 
 @app.get("/events/{event_id}/participant-history")
-async def get_event_participant_history(current_user: UserSession = Depends(get_current_user), event_id: str, hours: int = 24):
+async def get_event_participant_history(event_id: str, hours: int = 24, current_user: UserSession = Depends(get_current_user)):
     """Get participant count history for graphing (from event_participant_snapshots)."""
     try:
         pool = await get_db_pool()
