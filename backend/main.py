@@ -72,9 +72,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Mount static files for frontend
-app.mount("/static", StaticFiles(directory="static"), name="static")
-app.mount("/assets", StaticFiles(directory="frontend/dist/assets"), name="assets")
+# Mount static files for frontend (only if directories exist)
+if os.path.exists("static"):
+    app.mount("/static", StaticFiles(directory="static"), name="static")
+if os.path.exists("frontend/dist/assets"):
+    app.mount("/assets", StaticFiles(directory="frontend/dist/assets"), name="assets")
 
 # Pydantic models
 class PayrollCalculationRequest(BaseModel):
@@ -163,8 +165,11 @@ async def shutdown_event():
 
 @app.get("/")
 async def root():
-    """Serve the frontend index.html"""
-    return FileResponse("frontend/dist/index.html")
+    """Serve the frontend index.html if it exists, otherwise return API info"""
+    if os.path.exists("frontend/dist/index.html"):
+        return FileResponse("frontend/dist/index.html")
+    else:
+        return {"message": "Red Legion Web Payroll API", "version": "1.0.0"}
 
 @app.get("/auth/login")
 async def discord_login():
@@ -2886,7 +2891,10 @@ async def get_event_participant_history(event_id: str, hours: int = 24):
 @app.get("/{path:path}")
 async def catch_all(path: str):
     """Catch-all route to serve the frontend for any unmatched routes (Vue.js SPA routing)."""
-    return FileResponse("frontend/dist/index.html")
+    if os.path.exists("frontend/dist/index.html"):
+        return FileResponse("frontend/dist/index.html")
+    else:
+        raise HTTPException(status_code=404, detail="Page not found")
 
 if __name__ == "__main__":
     import uvicorn
