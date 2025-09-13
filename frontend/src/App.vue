@@ -9,31 +9,33 @@
             <h1 class="text-2xl font-bold text-red-legion-500">Red Legion Payroll</h1>
           </div>
           <div class="flex items-center space-x-4">
-            <span class="text-space-gray-300">Welcome, {{ user.username }}</span>
-            <router-link 
-              to="/events" 
-              class="bg-purple-600 hover:bg-purple-700 px-4 py-2 rounded-lg transition-colors flex items-center space-x-2"
-            >
-              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
-              </svg>
-              <span>Events</span>
-            </router-link>
-            <router-link 
-              to="/management" 
-              class="bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded-lg transition-colors flex items-center space-x-2"
-            >
-              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"></path>
-              </svg>
-              <span>Management</span>
-            </router-link>
-            <button 
-              @click="logout" 
-              class="bg-red-legion-600 hover:bg-red-legion-700 px-4 py-2 rounded-lg transition-colors"
-            >
-              Logout
-            </button>
+            <template v-if="user">
+              <span class="text-space-gray-300">Welcome, {{ user.username }}</span>
+              <router-link 
+                to="/events" 
+                class="bg-purple-600 hover:bg-purple-700 px-4 py-2 rounded-lg transition-colors flex items-center space-x-2"
+              >
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
+                </svg>
+                <span>Events</span>
+              </router-link>
+              <router-link 
+                to="/management" 
+                class="bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded-lg transition-colors flex items-center space-x-2"
+              >
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"></path>
+                </svg>
+                <span>Management</span>
+              </router-link>
+              <button 
+                @click="logout" 
+                class="bg-red-legion-600 hover:bg-red-legion-700 px-4 py-2 rounded-lg transition-colors"
+              >
+                Logout
+              </button>
+            </template>
           </div>
         </div>
       </div>
