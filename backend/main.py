@@ -225,7 +225,7 @@ async def discord_login():
     )
     return RedirectResponse(discord_auth_url)
 
-@app.get("/auth/callback")
+@app.get("/auth/discord/callback")
 async def discord_callback(code: str):
     """Handle Discord OAuth callback."""
     try:
