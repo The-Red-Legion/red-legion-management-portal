@@ -236,7 +236,8 @@
         name: "{{ app_service_name }}"
         state: started
         daemon_reload: yes
-      tags: debug
+        enabled: yes
+      tags: deploy
 
     - name: Wait for service to start
       wait_for:
@@ -244,7 +245,7 @@
         host: "127.0.0.1"
         delay: 5
         timeout: 30
-      tags: debug
+      tags: deploy
 
     - name: Check fresh service logs after restart
       command: journalctl -u {{ app_service_name }} --since "5 minutes ago" --no-pager
