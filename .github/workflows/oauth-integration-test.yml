@@ -1,0 +1,50 @@
+name: OAuth Integration Test
+
+on:
+  pull_request:
+    branches: [ main, ]
+  workflow_dispatch:
+  schedule:
+    # Run integration tests daily at 2 AM UTC
+    - cron: '0 2 * * *'
+
+jobs:
+  oauth-integration-test:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install pytest pytest-asyncio httpx asyncpg PyJWT
+        pip install -r requirements.txt
+    
+    - name: Run OAuth Integration Tests
+      env:
+        # Use test credentials for integration testing
+        DISCORD_CLIENT_ID: "test_client_id_123456789"
+        DISCORD_CLIENT_SECRET: "test_client_secret_mock"
+        JWT_SECRET_KEY: "test_jwt_secret_for_integration_testing_only"
+        OAUTH_REDIRECT_URI: "https://arccorp-web.redlegion.org/auth/callback"
+        DATABASE_URL: "postgresql://test_user:test_pass@localhost:5432/test_db"
+      run: |
+        python -m pytest tests/test_oauth_integration.py -v --tb=short
+    
+    - name: Generate Integration Test Report
+      if: always()
+      run: |
+        python -m pytest tests/test_oauth_integration.py --junitxml=oauth-integration-report.xml
+    
+    - name: Upload Test Results
+      if: always()
+      uses: actions/upload-artifact@v3
+      with:
+        name: oauth-integration-test-results
+        path: oauth-integration-report.xml

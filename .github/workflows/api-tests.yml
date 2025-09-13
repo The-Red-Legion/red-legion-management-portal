@@ -1,0 +1,48 @@
+name: API Tests
+
+on:
+  pull_request:
+    branches: [ main,]
+  workflow_dispatch:
+
+jobs:
+  api-tests:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install pytest pytest-asyncio httpx fastapi PyJWT
+        pip install -r requirements.txt
+    
+    - name: Run API Endpoint Tests
+      env:
+        # Test environment variables
+        JWT_SECRET_KEY: "test_jwt_secret_for_api_testing"
+        DISCORD_CLIENT_ID: "test_client_id_123456789"
+        DISCORD_CLIENT_SECRET: "test_client_secret_mock"
+        DATABASE_URL: "postgresql://test_user:test_pass@localhost:5432/test_db"
+      run: |
+        python -m pytest tests/test_api_endpoints.py -v --tb=short
+    
+    - name: Generate API Test Report
+      if: always()
+      run: |
+        python -m pytest tests/test_api_endpoints.py --junitxml=api-test-report.xml --cov=. --cov-report=xml
+    
+    - name: Upload API Test Results
+      if: always()
+      uses: actions/upload-artifact@v3
+      with:
+        name: api-test-results
+        path: |
+          api-test-report.xml
+          coverage.xml
