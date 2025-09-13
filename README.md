@@ -57,3 +57,4 @@ Both backend and frontend run locally with hot reload for rapid development.
 **Backend**: http://localhost:8000
 **Frontend**: http://localhost:5173
 **Database**: Your existing PostgreSQL instance# Trigger deployment with updated secret visibility
+# Force redeploy with Discord OAuth secrets configured
