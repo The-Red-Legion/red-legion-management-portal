@@ -58,6 +58,57 @@ DISCORD_CLIENT_SECRET = os.getenv("DISCORD_CLIENT_SECRET")
 DISCORD_REDIRECT_URI = os.getenv("DISCORD_REDIRECT_URI")
 FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:5173")
 
+# Discord role-based access control constants
+RED_LEGION_GUILD_ID = "814699481912049704"
+ADMIN_ROLE_ID = "814699701861220412"
+ORG_LEADERS_ROLE_ID = "1130629722070585396"
+ALLOWED_ROLE_IDS = {ADMIN_ROLE_ID, ORG_LEADERS_ROLE_ID}
+
+async def check_user_guild_roles(access_token: str) -> tuple[bool, list]:
+    """Check if user has required roles in Red Legion guild."""
+    try:
+        async with httpx.AsyncClient() as client:
+            # Get user's guilds to check Red Legion membership
+            guilds_response = await client.get(
+                "https://discord.com/api/users/@me/guilds",
+                headers={"Authorization": f"Bearer {access_token}"}
+            )
+            
+            if guilds_response.status_code != 200:
+                logger.error(f"Failed to fetch user guilds: {guilds_response.status_code}")
+                return False, []
+            
+            guilds = guilds_response.json()
+            red_legion_guild = None
+            
+            # Check if user is in Red Legion guild
+            for guild in guilds:
+                if guild["id"] == RED_LEGION_GUILD_ID:
+                    red_legion_guild = guild
+                    break
+            
+            if not red_legion_guild:
+                logger.info("User not in Red Legion guild")
+                return False, []
+                
+            # For guilds scope, we get basic role info
+            # Check if user has permissions (approximation based on guild permissions)
+            permissions = int(red_legion_guild.get("permissions", 0))
+            
+            # Check for administrator permission (8) or manage_guild (32)
+            has_admin_perms = bool(permissions & 0x8) or bool(permissions & 0x20)
+            
+            if has_admin_perms:
+                logger.info("User has admin permissions in Red Legion guild")
+                return True, ["admin"]
+            else:
+                logger.info("User in Red Legion guild but no admin permissions")
+                return False, []
+                
+    except Exception as e:
+        logger.error(f"Error checking user roles: {e}")
+        return False, []
+
 # CORS configuration - environment aware
 cors_origins = ["http://localhost:5173", "http://127.0.0.1:5173", "http://localhost:5174", "http://127.0.0.1:5174"]
 if FRONTEND_URL and FRONTEND_URL not in cors_origins:
@@ -170,7 +221,7 @@ async def discord_login():
         f"?client_id={DISCORD_CLIENT_ID}"
         f"&redirect_uri={DISCORD_REDIRECT_URI}"
         f"&response_type=code"
-        f"&scope=identify"
+        f"&scope=identify%20guilds"
     )
     return RedirectResponse(discord_auth_url)
 
@@ -200,8 +251,16 @@ async def discord_callback(code: str):
             )
             user_data = user_response.json()
             
-        # Redirect to frontend with user data
-        return RedirectResponse(f"{FRONTEND_URL}/?user={user_data['username']}&id={user_data['id']}")
+            # Check if user has required roles in Red Legion guild
+            has_access, roles = await check_user_guild_roles(token_data['access_token'])
+            
+            if not has_access:
+                # Redirect to access denied page
+                return RedirectResponse(f"{FRONTEND_URL}/access-denied")
+            
+        # Redirect to frontend with user data and roles
+        roles_param = "%20".join(roles) if roles else ""
+        return RedirectResponse(f"{FRONTEND_URL}/?user={user_data['username']}&id={user_data['id']}&roles={roles_param}")
         
     except Exception as e:
         logger.error(f"Discord auth error: {e}")
