@@ -1,6 +1,6 @@
 # 🌐 Red Legion Web Payroll
 
-A simplified web interface for the Red Legion Discord bot payroll system.
+A simplified web interface for the Red Legion Discord bot payroll system. OAuth updated.
 
 ## 🚀 Quick Start
 
