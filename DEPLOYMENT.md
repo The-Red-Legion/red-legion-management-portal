@@ -24,7 +24,7 @@ Before deployment, ensure the following GitHub Secrets are configured:
 | `DATABASE_URL` | PostgreSQL connection string | `postgresql://user:pass@host:5432/db` |
 | `DISCORD_CLIENT_ID` | Discord OAuth application client ID | `1234567890123456789` |
 | `DISCORD_CLIENT_SECRET` | Discord OAuth application client secret | `ABC123...` |
-| `DISCORD_REDIRECT_URI` | Discord OAuth redirect URI | `http://WEB_SERVER_HOST:8000/auth/callback` |
+| `DISCORD_REDIRECT_URI` | Discord OAuth redirect URI | `http://WEB_SERVER_HOST/auth/discord/callback` |
 
 ### Getting the Values
 
