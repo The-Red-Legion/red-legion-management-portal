@@ -1,9 +1,15 @@
 <template>
   <!-- Main Content -->
   <main class="max-w-7xl mx-auto px-4 py-8">
-    <!-- Debug info -->
-    <div class="bg-red-500 text-white p-4 mb-4 rounded">
-      DEBUG: User = {{ user ? JSON.stringify(user) : 'null' }}
+    <!-- Auth bypass for testing -->
+    <div v-if="!user" class="text-center mb-8">
+      <p class="text-white mb-4">Authentication bypass for testing:</p>
+      <a 
+        href="http://34.28.1.154:8000/auth/login" 
+        class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg inline-block"
+      >
+        Login via Backend (Port 8000)
+      </a>
     </div>
     
     <LoginPage v-if="!user" @login="handleLogin" />
