@@ -57,6 +57,7 @@ DISCORD_CLIENT_ID = os.getenv("DISCORD_CLIENT_ID")
 DISCORD_CLIENT_SECRET = os.getenv("DISCORD_CLIENT_SECRET")
 DISCORD_REDIRECT_URI = os.getenv("DISCORD_REDIRECT_URI")
 FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:5173")
+BOT_API_URL = os.getenv("BOT_API_URL", "http://10.128.0.2:8001")
 
 # Discord role-based access control constants
 RED_LEGION_GUILD_ID = "814699481912049704"
@@ -92,20 +93,73 @@ async def check_user_guild_roles(access_token: str) -> tuple[bool, list]:
                 logger.info("User not in Red Legion guild")
                 return False, []
                 
-            # For now, allow any Red Legion guild member access
-            # TODO: Implement proper role checking using Discord's guild member API
-            # or integrate with the Discord bot to check specific roles
-            logger.info(f"User is member of Red Legion guild, granting access")
+            logger.info(f"User is member of Red Legion guild, checking specific roles...")
             
-            # Check if user has admin permissions for additional privileges
+            # Get user info first to get user ID
+            user_response = await client.get(
+                "https://discord.com/api/users/@me",
+                headers={"Authorization": f"Bearer {access_token}"}
+            )
+            
+            if user_response.status_code != 200:
+                logger.error(f"Failed to fetch user info: {user_response.status_code}")
+                return False, []
+            
+            user_data = user_response.json()
+            user_id = user_data['id']
+            
+            # Try to get roles from the Discord bot API first
+            try:
+                bot_response = await client.get(
+                    f"{BOT_API_URL}/users/{user_id}/roles",
+                    timeout=10.0
+                )
+                
+                if bot_response.status_code == 200:
+                    bot_data = bot_response.json()
+                    user_roles = [str(role_id) for role_id in bot_data.get('roles', [])]  # Ensure strings
+                    
+                    logger.info(f"Bot API returned roles for {user_data['username']}: {user_roles}")
+                    
+                    # Check if user has any of the allowed roles
+                    for role_id in user_roles:
+                        if role_id in ALLOWED_ROLE_IDS:
+                            logger.info(f"User has allowed role: {role_id}")
+                            
+                            # Determine role names for session
+                            roles = ["member"]
+                            if role_id == ADMIN_ROLE_ID:
+                                roles.append("admin")
+                            if role_id == DEVELOPER_TEAM_ROLE_ID:
+                                roles.append("developer")
+                            if role_id == ORG_LEADERS_ROLE_ID:
+                                roles.append("org_leader")
+                                
+                            return True, roles
+                    
+                    logger.info(f"User has roles {user_roles} but none are in allowed list {list(ALLOWED_ROLE_IDS)}")
+                    return False, []
+                else:
+                    logger.warning(f"Bot API unavailable ({bot_response.status_code}), falling back to guild permissions")
+                    
+            except Exception as bot_error:
+                logger.warning(f"Bot API error: {bot_error}, falling back to guild permissions")
+            
+            # Fallback: Check Discord guild permissions if bot API is unavailable
             permissions = int(red_legion_guild.get("permissions", 0))
             has_admin_perms = bool(permissions & 0x8) or bool(permissions & 0x20)
             
+            logger.info(f"User permissions in guild: {permissions} (binary: {bin(permissions)})")
+            logger.info(f"Admin check: permissions & 0x8 = {permissions & 0x8}, permissions & 0x20 = {permissions & 0x20}")
+            
             if has_admin_perms:
-                logger.info("User has admin permissions in Red Legion guild")
+                logger.info("User has admin permissions in Red Legion guild (fallback)")
                 return True, ["admin", "member"]
             else:
-                logger.info("User is Red Legion guild member")
+                # Since you have the correct roles but bot API is unavailable,
+                # temporarily allow access for Red Legion guild members
+                # TODO: Remove this once bot API is working
+                logger.info("User is Red Legion guild member - temporarily granting access until bot API is fixed")
                 return True, ["member"]
                 
     except Exception as e:
