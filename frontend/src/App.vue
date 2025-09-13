@@ -55,6 +55,7 @@
 
 <script>
 import { ref, onMounted } from 'vue'
+import { apiService } from './api.js'
 
 export default {
   name: 'App',
@@ -68,7 +69,7 @@ export default {
 
     const logout = () => {
       // Redirect to backend logout endpoint which will clear session and redirect to confirmation page
-      window.location.href = 'http://localhost:8000/auth/logout'
+      window.location.href = apiService.getLogoutUrl()
     }
 
 

@@ -405,6 +405,7 @@
 
 <script>
 import { ref, onMounted } from 'vue'
+import { apiService } from '../api.js'
 
 export default {
   name: 'Management',
@@ -460,11 +461,7 @@ export default {
     const loadEvents = async () => {
       loading.value = true
       try {
-        const response = await fetch('http://localhost:8000/admin/events')
-        if (!response.ok) {
-          throw new Error(`HTTP error! status: ${response.status}`)
-        }
-        const data = await response.json()
+        const data = await apiService.getAdminEvents()
         events.value = data
       } catch (error) {
         console.error('Failed to load events:', error)
@@ -500,19 +497,7 @@ export default {
       deletingEvents.value.push(eventId)
       
       try {
-        const response = await fetch(`http://localhost:8000/admin/events/${eventId}`, {
-          method: 'DELETE',
-          headers: {
-            'Content-Type': 'application/json'
-          }
-        })
-        
-        if (!response.ok) {
-          const errorData = await response.json().catch(() => ({ detail: 'Unknown error occurred' }))
-          throw new Error(errorData.detail || `HTTP error! status: ${response.status}`)
-        }
-        
-        const result = await response.json()
+        const result = await apiService.deleteAdminEvent(eventId)
         
         // Remove the event from the local list
         events.value = events.value.filter(event => event.event_id !== eventId)
@@ -543,19 +528,7 @@ export default {
 
       creatingTestEvent.value = true
       try {
-        const response = await fetch(`http://localhost:8000/admin/create-test-event/${eventType}`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
-          }
-        })
-        
-        if (!response.ok) {
-          const errorText = await response.text()
-          throw new Error(`HTTP error! status: ${response.status} - ${errorText}`)
-        }
-        
-        const result = await response.json()
+        const result = await apiService.createTestEvent(eventType)
         console.log(`Test ${eventType} event created:`, result)
         
         // Refresh the events list to show the new test event
@@ -578,11 +551,7 @@ export default {
       payrollData.value = null
 
       try {
-        const response = await fetch(`http://localhost:8000/admin/payroll-summary/${eventId}`)
-        if (!response.ok) {
-          throw new Error(`HTTP error! status: ${response.status}`)
-        }
-        const data = await response.json()
+        const data = await apiService.getPayrollSummary(eventId)
         payrollData.value = data
       } catch (error) {
         console.error('Failed to load payroll summary:', error)
@@ -597,13 +566,10 @@ export default {
 
       exportingPDF.value = true
       try {
-        const response = await fetch(`http://localhost:8000/admin/payroll-export/${payrollData.value.event.event_id}`)
-        if (!response.ok) {
-          throw new Error(`HTTP error! status: ${response.status}`)
-        }
-
-        // Get the PDF blob and create a download
-        const blob = await response.blob()
+        const data = await apiService.exportPayroll(payrollData.value.event.event_id)
+        
+        // Create blob from the response data
+        const blob = new Blob([JSON.stringify(data)], { type: 'application/pdf' })
         const url = window.URL.createObjectURL(blob)
         const a = document.createElement('a')
         a.href = url

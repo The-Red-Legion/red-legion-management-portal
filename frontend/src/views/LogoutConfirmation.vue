@@ -85,6 +85,7 @@
 <script>
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
+import { apiService } from '../api.js'
 
 export default {
   name: 'LogoutConfirmation',
@@ -93,7 +94,7 @@ export default {
 
     const loginWithDiscord = () => {
       // Redirect to Discord OAuth
-      window.location.href = 'http://localhost:8000/auth/login'
+      window.location.href = apiService.getLoginUrl()
     }
 
     const clearDataAndReload = () => {

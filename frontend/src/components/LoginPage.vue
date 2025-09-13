@@ -46,6 +46,7 @@
 
 <script>
 import { ref } from 'vue'
+import { apiService } from '../api.js'
 
 export default {
   name: 'LoginPage',
@@ -56,7 +57,7 @@ export default {
     const loginWithDiscord = () => {
       loading.value = true
       // Redirect to Discord OAuth via backend
-      window.location.href = 'http://localhost:8000/auth/login'
+      window.location.href = apiService.getLoginUrl()
     }
 
     return {

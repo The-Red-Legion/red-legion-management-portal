@@ -174,6 +174,7 @@
 
 <script>
 import { ref, onMounted } from 'vue'
+import { apiService } from '../api.js'
 
 export default {
   name: 'EventManagementModal',
@@ -204,13 +205,7 @@ export default {
       loading.value = true
       try {
         console.log('loadEvents: Fetching events from API')
-        // Add cache-busting parameter to ensure fresh data
-        const response = await fetch(`http://localhost:8000/admin/events?_t=${Date.now()}`)
-        console.log('loadEvents: Response status:', response.status)
-        if (!response.ok) {
-          throw new Error(`HTTP error! status: ${response.status}`)
-        }
-        const data = await response.json()
+        const data = await apiService.getAdminEvents()
         console.log('loadEvents: Data received:', data)
         events.value = data
         console.log('Loaded events:', data.length)
@@ -234,21 +229,7 @@ export default {
 
       deletingEvents.value.push(eventId)
       try {
-        const response = await fetch(`http://localhost:8000/admin/events/${eventId}`, {
-          method: 'DELETE'
-        })
-        
-        if (!response.ok) {
-          if (response.status === 404) {
-            // Event was already deleted, just remove from local list and refresh
-            console.log(`Event ${eventId} was already deleted`)
-            events.value = events.value.filter(event => event.event_id !== eventId)
-            // Refresh to get current server state
-            await loadEvents()
-            return
-          }
-          throw new Error(`HTTP error! status: ${response.status}`)
-        }
+        await apiService.deleteAdminEvent(eventId)
         
         // Remove the event from the local list
         events.value = events.value.filter(event => event.event_id !== eventId)
@@ -277,19 +258,7 @@ export default {
 
       creatingTestEvent.value = true
       try {
-        const response = await fetch(`http://localhost:8000/admin/create-test-event/${eventType}`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
-          }
-        })
-        
-        if (!response.ok) {
-          const errorText = await response.text()
-          throw new Error(`HTTP error! status: ${response.status} - ${errorText}`)
-        }
-        
-        const result = await response.json()
+        const result = await apiService.createTestEvent(eventType)
         console.log(`Test ${eventType} event created:`, result)
         
         // Refresh the events list to show the new test event
@@ -309,18 +278,7 @@ export default {
     const refreshUexCache = async () => {
       refreshingUexCache.value = true
       try {
-        const response = await fetch('http://localhost:8000/admin/refresh-uex-cache', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
-          }
-        })
-        
-        if (!response.ok) {
-          throw new Error(`HTTP error! status: ${response.status}`)
-        }
-        
-        const result = await response.json()
+        const result = await apiService.refreshUexCache()
         
         if (result.success) {
           const totalItems = Object.values(result.results).reduce((total, cat) => total + (cat.item_count || 0), 0)
