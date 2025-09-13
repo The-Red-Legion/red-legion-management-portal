@@ -217,6 +217,12 @@ async def root():
 @app.get("/auth/login")
 async def discord_login():
     """Redirect to Discord OAuth."""
+    # Check if Discord OAuth is properly configured
+    if not DISCORD_CLIENT_ID:
+        raise HTTPException(status_code=500, detail="Discord OAuth not configured: Missing DISCORD_CLIENT_ID")
+    if not DISCORD_REDIRECT_URI:
+        raise HTTPException(status_code=500, detail="Discord OAuth not configured: Missing DISCORD_REDIRECT_URI")
+    
     discord_auth_url = (
         f"https://discord.com/api/oauth2/authorize"
         f"?client_id={DISCORD_CLIENT_ID}"
@@ -224,12 +230,20 @@ async def discord_login():
         f"&response_type=code"
         f"&scope=identify%20guilds"
     )
+    
+    logger.info(f"Discord OAuth redirect URL: {discord_auth_url}")
     return RedirectResponse(discord_auth_url)
 
 @app.get("/auth/discord/callback")
 async def discord_callback(code: str):
     """Handle Discord OAuth callback."""
     try:
+        # Validate Discord OAuth configuration
+        if not DISCORD_CLIENT_SECRET:
+            raise HTTPException(status_code=500, detail="Discord OAuth not configured: Missing DISCORD_CLIENT_SECRET")
+            
+        logger.info(f"Discord OAuth callback received with code: {code[:10]}...")
+        
         # Exchange code for access token
         async with httpx.AsyncClient() as client:
             token_response = await client.post(
@@ -243,7 +257,13 @@ async def discord_callback(code: str):
                 },
                 headers={"Content-Type": "application/x-www-form-urlencoded"}
             )
+            
+            if token_response.status_code != 200:
+                logger.error(f"Discord token exchange failed: {token_response.status_code} - {token_response.text}")
+                raise HTTPException(status_code=400, detail="Discord token exchange failed")
+                
             token_data = token_response.json()
+            logger.info("Discord token exchange successful")
             
             # Get user info
             user_response = await client.get(
