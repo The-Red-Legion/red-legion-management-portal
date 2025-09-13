@@ -7,7 +7,7 @@ Type=simple
 User={{ app_user }}
 Group={{ app_user }}
 WorkingDirectory={{ app_directory }}/backend
-Environment=PATH={{ app_directory }}/venv/bin
+Environment=PATH={{ app_directory }}/venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 EnvironmentFile={{ app_directory }}/.env
 ExecStart={{ app_directory }}/venv/bin/uvicorn main:app --host 0.0.0.0 --port {{ backend_port }}
 ExecReload=/bin/kill -s HUP $MAINPID

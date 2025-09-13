@@ -86,7 +86,25 @@
         requirements: "{{ app_directory }}/requirements.txt"
         virtualenv: "{{ app_directory }}/venv"
         virtualenv_command: "python3 -m venv"
+        state: present
       become_user: "{{ app_user }}"
+      register: pip_install_result
+      tags: deploy
+
+    - name: Show pip installation result
+      debug:
+        var: pip_install_result
+      tags: deploy
+
+    - name: Verify asyncpg installation
+      command: "{{ app_directory }}/venv/bin/python -c 'import asyncpg; print(asyncpg.__version__)'"
+      become_user: "{{ app_user }}"
+      register: asyncpg_test
+      tags: deploy
+
+    - name: Show asyncpg verification
+      debug:
+        var: asyncpg_test
       tags: deploy
 
     - name: Create .env file from template
@@ -178,6 +196,14 @@
         name: "{{ app_service_name }}"
         state: restarted
         daemon_reload: yes
+      tags: debug
+
+    - name: Wait for service to start
+      wait_for:
+        port: "{{ backend_port }}"
+        host: "127.0.0.1"
+        delay: 5
+        timeout: 30
       tags: debug
 
   handlers:
