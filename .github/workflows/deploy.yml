@@ -68,6 +68,9 @@ jobs:
 
     - name: Deploy with GCloud
       run: |
+        # Authenticate with service account
+        gcloud auth activate-service-account --key-file=$GOOGLE_APPLICATION_CREDENTIALS
+        
         # Copy deployment package to VM
         gcloud compute scp --recurse deployment-package/* ubuntu@arccorp-web-server:/tmp/deployment/ --zone us-central1-a
         
