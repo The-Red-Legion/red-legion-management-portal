@@ -163,6 +163,23 @@
         var: nginx_sites.stdout_lines
       tags: debug
 
+    - name: Check service logs
+      command: journalctl -u {{ app_service_name }} --lines=50 --no-pager
+      register: service_logs
+      tags: debug
+
+    - name: Show service logs
+      debug:
+        var: service_logs.stdout_lines
+      tags: debug
+
+    - name: Restart application service
+      systemd:
+        name: "{{ app_service_name }}"
+        state: restarted
+        daemon_reload: yes
+      tags: debug
+
   handlers:
     - name: reload systemd
       systemd:
