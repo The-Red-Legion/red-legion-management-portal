@@ -107,6 +107,17 @@
         var: asyncpg_test
       tags: deploy
 
+    - name: Verify reportlab installation
+      command: "{{ app_directory }}/venv/bin/python -c 'import reportlab; print(reportlab.__version__)'"
+      become_user: "{{ app_user }}"
+      register: reportlab_test
+      tags: deploy
+
+    - name: Show reportlab verification
+      debug:
+        var: reportlab_test
+      tags: deploy
+
     - name: Create .env file from template
       template:
         src: env.j2
