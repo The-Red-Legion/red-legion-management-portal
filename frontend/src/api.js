@@ -1,6 +1,9 @@
 import axios from 'axios'
 
-const API_BASE_URL = 'http://localhost:8000'
+// Use current domain for API calls in production, localhost for development
+const API_BASE_URL = import.meta.env.MODE === 'production' 
+  ? '/api'  // Use relative path for production (nginx will proxy to backend)
+  : 'http://localhost:8000'
 
 const api = axios.create({
   baseURL: API_BASE_URL,
@@ -88,7 +91,7 @@ export const apiService = {
 
   // Trading Locations
   async getTradingLocations() {
-    const response = await api.get('/api/trading-locations')
+    const response = await api.get('/trading-locations')
     return response.data
   },
 
@@ -96,8 +99,8 @@ export const apiService = {
   async getMaterialPrices(materialNames, locationId = null) {
     const materialsParam = Array.isArray(materialNames) ? materialNames.join(',') : materialNames
     const url = locationId 
-      ? `/api/location-prices/${locationId}?materials=${encodeURIComponent(materialsParam)}`
-      : `/api/material-prices/${encodeURIComponent(materialsParam)}`
+      ? `/location-prices/${locationId}?materials=${encodeURIComponent(materialsParam)}`
+      : `/material-prices/${encodeURIComponent(materialsParam)}`
     const response = await api.get(url)
     return response.data
   },
