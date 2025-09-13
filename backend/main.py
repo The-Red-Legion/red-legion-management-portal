@@ -5,7 +5,8 @@ Simple web interface for Discord bot payroll system
 
 from fastapi import FastAPI, HTTPException, Depends, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import RedirectResponse, Response
+from fastapi.responses import RedirectResponse, Response, FileResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 import os
 import sys
@@ -70,6 +71,10 @@ app.add_middleware(
     allow_methods=["GET", "POST", "PUT", "DELETE"],
     allow_headers=["*"],
 )
+
+# Mount static files for frontend
+app.mount("/static", StaticFiles(directory="static"), name="static")
+app.mount("/assets", StaticFiles(directory="frontend/dist/assets"), name="assets")
 
 # Pydantic models
 class PayrollCalculationRequest(BaseModel):
@@ -158,8 +163,8 @@ async def shutdown_event():
 
 @app.get("/")
 async def root():
-    """Root endpoint."""
-    return {"message": "Red Legion Web Payroll API", "version": "1.0.0"}
+    """Serve the frontend index.html"""
+    return FileResponse("frontend/dist/index.html")
 
 @app.get("/auth/login")
 async def discord_login():
@@ -2876,6 +2881,12 @@ async def get_event_participant_history(event_id: str, hours: int = 24):
     except Exception as e:
         logger.error(f"Error fetching participant history for event {event_id}: {e}")
         raise HTTPException(status_code=500, detail="Failed to fetch participant history")
+
+# Catch-all route for Vue.js SPA routing
+@app.get("/{path:path}")
+async def catch_all(path: str):
+    """Catch-all route to serve the frontend for any unmatched routes (Vue.js SPA routing)."""
+    return FileResponse("frontend/dist/index.html")
 
 if __name__ == "__main__":
     import uvicorn
