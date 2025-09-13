@@ -118,6 +118,17 @@
         var: reportlab_test
       tags: deploy
 
+    - name: Verify aiohttp installation
+      command: "{{ app_directory }}/venv/bin/python -c 'import aiohttp; print(aiohttp.__version__)'"
+      become_user: "{{ app_user }}"
+      register: aiohttp_test
+      tags: deploy
+
+    - name: Show aiohttp verification
+      debug:
+        var: aiohttp_test
+      tags: deploy
+
     - name: Create .env file from template
       template:
         src: env.j2
