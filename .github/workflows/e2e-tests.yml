@@ -48,14 +48,14 @@ jobs:
     
     - name: Upload E2E Test Results
       if: always()
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: e2e-test-results
         path: e2e-test-report.xml
     
     - name: Upload Screenshots on Failure
       if: failure()
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: playwright-screenshots
         path: test-results/
