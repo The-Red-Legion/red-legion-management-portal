@@ -5,8 +5,7 @@ Simple web interface for Discord bot payroll system
 
 from fastapi import FastAPI, HTTPException, Depends, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import RedirectResponse, Response, FileResponse
-from fastapi.staticfiles import StaticFiles
+from fastapi.responses import RedirectResponse, Response
 from pydantic import BaseModel
 import os
 import sys
@@ -72,11 +71,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Mount static files for frontend (only if directories exist)
-if os.path.exists("static"):
-    app.mount("/static", StaticFiles(directory="static"), name="static")
-if os.path.exists("frontend/dist/assets"):
-    app.mount("/assets", StaticFiles(directory="frontend/dist/assets"), name="assets")
 
 # Pydantic models
 class PayrollCalculationRequest(BaseModel):
@@ -165,11 +159,8 @@ async def shutdown_event():
 
 @app.get("/")
 async def root():
-    """Serve the frontend index.html if it exists, otherwise return API info"""
-    if os.path.exists("frontend/dist/index.html"):
-        return FileResponse("frontend/dist/index.html")
-    else:
-        return {"message": "Red Legion Web Payroll API", "version": "1.0.0"}
+    """Root endpoint."""
+    return {"message": "Red Legion Web Payroll API", "version": "1.0.0"}
 
 @app.get("/auth/login")
 async def discord_login():
@@ -2887,14 +2878,6 @@ async def get_event_participant_history(event_id: str, hours: int = 24):
         logger.error(f"Error fetching participant history for event {event_id}: {e}")
         raise HTTPException(status_code=500, detail="Failed to fetch participant history")
 
-# Catch-all route for Vue.js SPA routing
-@app.get("/{path:path}")
-async def catch_all(path: str):
-    """Catch-all route to serve the frontend for any unmatched routes (Vue.js SPA routing)."""
-    if os.path.exists("frontend/dist/index.html"):
-        return FileResponse("frontend/dist/index.html")
-    else:
-        raise HTTPException(status_code=404, detail="Page not found")
 
 if __name__ == "__main__":
     import uvicorn

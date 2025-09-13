@@ -100,12 +100,94 @@ jobs:
         DISCORD_CLIENT_ID='${{ secrets.DISCORD_CLIENT_ID }}'
         DISCORD_CLIENT_SECRET='${{ secrets.DISCORD_CLIENT_SECRET }}'
         DISCORD_REDIRECT_URI='${{ secrets.DISCORD_REDIRECT_URI }}'
-        FRONTEND_URL='http://34.28.1.154:8000'
+        FRONTEND_URL='http://34.28.1.154'
         EOF
         
           # Fix permissions
           sudo chown ubuntu:ubuntu /opt/red-legion-website/.env
           sudo chmod 640 /opt/red-legion-website/.env
+          
+          # Configure nginx with proper settings
+          sudo tee /etc/nginx/sites-available/default > /dev/null <<'NGINX_EOF'
+        server {
+            listen 80 default_server;
+            listen [::]:80 default_server;
+            server_name _;
+
+            # Security headers
+            add_header X-Frame-Options DENY;
+            add_header X-Content-Type-Options nosniff;
+            add_header X-XSS-Protection \"1; mode=block\";
+            add_header Referrer-Policy strict-origin-when-cross-origin;
+
+            # Gzip compression
+            gzip on;
+            gzip_vary on;
+            gzip_min_length 1024;
+            gzip_proxied any;
+            gzip_comp_level 6;
+            gzip_types
+                text/plain
+                text/css
+                text/xml
+                text/javascript
+                application/json
+                application/javascript
+                application/xml+rss
+                application/atom+xml
+                image/svg+xml;
+
+            # Serve static files directly
+            location /static/ {
+                alias /opt/red-legion-website/static/;
+                expires 1y;
+                add_header Cache-Control \"public, immutable\";
+            }
+
+            # Serve frontend static files
+            location /assets/ {
+                alias /opt/red-legion-website/frontend/dist/assets/;
+                expires 1y;
+                add_header Cache-Control \"public, immutable\";
+            }
+
+            # Explicit API routes - strip /api prefix and forward to backend
+            location /api/ {
+                rewrite ^/api/(.*) /\$1 break;
+                proxy_pass http://127.0.0.1:8000;
+                proxy_http_version 1.1;
+                proxy_set_header Host \$host;
+                proxy_set_header X-Real-IP \$remote_addr;
+                proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+                proxy_set_header X-Forwarded-Proto \$scheme;
+                proxy_read_timeout 300;
+                proxy_connect_timeout 300;
+                proxy_send_timeout 300;
+            }
+
+            # Frontend routes (Vue.js SPA)
+            location / {
+                root /opt/red-legion-website/frontend/dist;
+                try_files \$uri \$uri/ /index.html;
+            }
+
+            # Health check endpoint
+            location /health {
+                proxy_pass http://127.0.0.1:8000;
+                access_log off;
+            }
+
+            # Block common attack patterns
+            location ~* \\.(env|git|svn)\$ {
+                deny all;
+                return 404;
+            }
+        }
+        NGINX_EOF
+          
+          # Test and reload nginx
+          sudo nginx -t
+          sudo systemctl reload nginx
           
           # Start the service
           sudo systemctl start red-legion-website-backend
