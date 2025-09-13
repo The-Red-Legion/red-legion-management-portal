@@ -73,10 +73,12 @@
             </div>
           </div>
 
-          <!-- Events Table -->
-          <div v-if="events.length > 0" class="bg-space-gray-700 rounded-lg overflow-hidden">
-            <div class="overflow-x-auto">
-              <table class="w-full">
+          <!-- Events Section -->
+          <div>
+            <!-- Events Table -->
+            <div v-if="events.length > 0" class="bg-space-gray-700 rounded-lg overflow-hidden">
+              <div class="overflow-x-auto">
+                <table class="w-full">
                 <thead class="bg-space-gray-600">
                   <tr>
                     <th class="text-left py-3 px-2 text-white font-medium whitespace-nowrap">Event ID</th>
@@ -105,9 +107,23 @@
                     <td class="py-3 px-2 whitespace-nowrap">
                       <span :class="[
                         'px-2 py-1 rounded-full text-xs font-medium inline-block',
-                        event.event_type === 'mining' ? 'bg-blue-500 text-blue-100' : 'bg-orange-500 text-orange-100'
+                        {
+                          'bg-blue-500 text-blue-100': event.event_type === 'mining',
+                          'bg-orange-500 text-orange-100': event.event_type === 'salvage',
+                          'bg-red-500 text-red-100': event.event_type === 'combat',
+                          'bg-green-500 text-green-100': event.event_type === 'training',
+                          'bg-purple-500 text-purple-100': event.event_type === 'cargo',
+                          'bg-gray-500 text-gray-100': !['mining', 'salvage', 'combat', 'training', 'cargo'].includes(event.event_type)
+                        }
                       ]">
-                        {{ event.event_type === 'mining' ? '⛏️ Mining' : '🔧 Salvage' }}
+                        {{
+                          event.event_type === 'mining' ? '⛏️ Mining' :
+                          event.event_type === 'salvage' ? '🔧 Salvage' :
+                          event.event_type === 'combat' ? '⚔️ Combat' :
+                          event.event_type === 'training' ? '🎓 Training' :
+                          event.event_type === 'cargo' ? '📦 Cargo' :
+                          `🏷️ ${event.event_type.charAt(0).toUpperCase() + event.event_type.slice(1)}`
+                        }}
                       </span>
                     </td>
                     <td class="py-3 px-2 text-white whitespace-nowrap">{{ event.event_name || 'N/A' }}</td>
@@ -170,10 +186,11 @@
           </div>
 
           <!-- No Events State -->
-          <div v-else class="text-center py-8">
+          <div v-else class="text-center py-8 bg-space-gray-700 rounded-lg">
             <div class="text-4xl mb-4">📋</div>
             <h3 class="text-xl font-medium text-white mb-2">No Events Found</h3>
             <p class="text-space-gray-400">No events have been created yet.</p>
+          </div>
           </div>
         </div>
       </div>

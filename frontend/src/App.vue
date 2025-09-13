@@ -11,6 +11,15 @@
           <div v-if="user" class="flex items-center space-x-4">
             <span class="text-space-gray-300">Welcome, {{ user.username }}</span>
             <router-link 
+              to="/events" 
+              class="bg-purple-600 hover:bg-purple-700 px-4 py-2 rounded-lg transition-colors flex items-center space-x-2"
+            >
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
+              </svg>
+              <span>Events</span>
+            </router-link>
+            <router-link 
               to="/management" 
               class="bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded-lg transition-colors flex items-center space-x-2"
             >
@@ -19,15 +28,6 @@
               </svg>
               <span>Management</span>
             </router-link>
-            <button 
-              @click="showEventCreationModal = true" 
-              class="bg-green-600 hover:bg-green-700 px-4 py-2 rounded-lg transition-colors flex items-center space-x-2"
-            >
-              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path>
-              </svg>
-              <span>Create Event</span>
-            </button>
             <button 
               @click="logout" 
               class="bg-red-legion-600 hover:bg-red-legion-700 px-4 py-2 rounded-lg transition-colors"
@@ -40,15 +40,8 @@
     </header>
 
     <!-- Main Content -->
-    <router-view :user="user" @login="handleLogin" @show-event-modal="showEventCreationModal = true" />
+    <router-view :user="user" @login="handleLogin" />
 
-    <!-- Event Creation Modal -->
-    <EventCreationModal 
-      v-if="showEventCreationModal" 
-      :user="user"
-      @close="showEventCreationModal = false"
-      @event-created="handleEventCreated"
-    />
 
 
     <!-- Footer -->
@@ -62,16 +55,11 @@
 
 <script>
 import { ref, onMounted } from 'vue'
-import EventCreationModal from './components/EventCreationModal.vue'
 
 export default {
   name: 'App',
-  components: {
-    EventCreationModal
-  },
   setup() {
     const user = ref(null)
-    const showEventCreationModal = ref(false)
 
     const handleLogin = (userData) => {
       user.value = userData
@@ -79,15 +67,10 @@ export default {
     }
 
     const logout = () => {
-      user.value = null
-      localStorage.removeItem('red_legion_user')
+      // Redirect to backend logout endpoint which will clear session and redirect to confirmation page
+      window.location.href = 'http://localhost:8000/auth/logout'
     }
 
-    const handleEventCreated = (eventData) => {
-      showEventCreationModal.value = false
-      // TODO: Could refresh event list or show success message
-      console.log('Event created:', eventData)
-    }
 
     onMounted(() => {
       // Check URL params for OAuth callback
@@ -105,6 +88,15 @@ export default {
         const savedUser = localStorage.getItem('red_legion_user')
         if (savedUser) {
           user.value = JSON.parse(savedUser)
+        } else {
+          // Temporary bypass for testing - auto-login with demo user
+          console.log('Auto-logging in with demo user for testing')
+          const demoUser = { 
+            username: 'demo_user', 
+            id: '123456789',
+            display_name: 'Demo User' 
+          }
+          handleLogin(demoUser)
         }
       }
     })
@@ -113,8 +105,6 @@ export default {
       user,
       handleLogin,
       logout,
-      showEventCreationModal,
-      handleEventCreated
     }
   }
 }

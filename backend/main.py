@@ -12,17 +12,28 @@ import sys
 import asyncpg
 import httpx
 from dotenv import load_dotenv
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Any
 import logging
 import random
 import string
 from datetime import datetime, timedelta
 import io
+import json
 from reportlab.lib.pagesizes import letter, A4
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, PageBreak, Image
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import inch
 from reportlab.lib import colors
+
+# Discord bot integration
+from services.discord_integration import (
+    trigger_voice_tracking_on_event_start,
+    trigger_voice_tracking_on_event_stop,
+    get_discord_bot_status
+)
+
+# Discord API client
+from services.discord_api import sync_discord_channels_to_db
 
 # Load environment variables
 load_dotenv()
@@ -68,6 +79,11 @@ class EventCreationRequest(BaseModel):
     event_type: str = "mining"
     location_notes: Optional[str] = None
     session_notes: Optional[str] = None
+    # Event scheduling fields
+    scheduled_start_time: Optional[datetime] = None
+    auto_start_enabled: bool = False
+    tracked_channels: Optional[List[Dict[str, Any]]] = None  # [{"id": 123, "name": "Mining Alpha"}]
+    primary_channel_id: Optional[int] = None
 
 # Database connection pool
 db_pool = None
@@ -184,6 +200,11 @@ async def discord_callback(code: str):
         logger.error(f"Discord auth error: {e}")
         raise HTTPException(status_code=400, detail="Authentication failed")
 
+@app.get("/auth/logout")
+async def logout():
+    """Handle logout and redirect to logout confirmation page."""
+    return RedirectResponse("http://localhost:5173/logout-confirmation")
+
 @app.get("/events")
 async def get_events():
     """Get all mining events from database."""
@@ -223,8 +244,6 @@ async def get_events():
                     e.ended_at
                 FROM events e
                 WHERE (e.event_id LIKE 'sm-%' OR e.event_id LIKE 'web-%')
-                AND e.event_type IN ('mining', 'salvage')
-                AND (e.payroll_calculated IS NULL OR e.payroll_calculated = false)
                 ORDER BY e.started_at DESC 
                 LIMIT 50
             """)
@@ -234,6 +253,310 @@ async def get_events():
     except Exception as e:
         logger.error(f"Database error: {e}")
         raise HTTPException(status_code=500, detail="Database error")
+
+@app.get("/discord/channels")
+async def get_discord_channels(guild_id: str = "814699481912049704"):
+    """Get all available Discord voice channels for the guild."""
+    try:
+        pool = await get_db_pool()
+        if pool is None:
+            # Return fallback channels when database is not available
+            fallback_channels = [
+                {"id": "123456789", "name": "🎤 General Voice", "type": "voice", "category": "general"},
+                {"id": "123456790", "name": "⛏️ Mining Alpha", "type": "voice", "category": "mining"},
+                {"id": "123456791", "name": "⛏️ Mining Beta", "type": "voice", "category": "mining"},
+                {"id": "123456792", "name": "🔧 Salvage Ops", "type": "voice", "category": "salvage"},
+                {"id": "123456793", "name": "⚔️ Combat Wing", "type": "voice", "category": "combat"},
+                {"id": "123456794", "name": "🚀 Exploration", "type": "voice", "category": "general"},
+                {"id": "814699481912049709", "name": "🎥 Stream/Restricted", "type": "voice", "category": "restricted"}
+            ]
+            return {
+                "channels": fallback_channels,
+                "total_count": len(fallback_channels),
+                "guild_id": guild_id,
+                "note": "Using fallback data - database unavailable"
+            }
+        
+        async with pool.acquire() as conn:
+            # Try to get channels from new comprehensive discord_channels table
+            try:
+                channels_data = await conn.fetch("""
+                    SELECT 
+                        channel_id,
+                        channel_name,
+                        channel_type,
+                        channel_purpose,
+                        category_name,
+                        is_active,
+                        is_trackable,
+                        last_seen
+                    FROM discord_channels 
+                    WHERE guild_id = $1 
+                      AND is_active = true 
+                      AND is_trackable = true 
+                      AND channel_type = 'voice'
+                    ORDER BY 
+                        CASE channel_purpose 
+                            WHEN 'mining' THEN 1
+                            WHEN 'salvage' THEN 2 
+                            WHEN 'combat' THEN 3
+                            WHEN 'exploration' THEN 4
+                            WHEN 'trading' THEN 5
+                            WHEN 'social' THEN 6
+                            WHEN 'restricted' THEN 7
+                            ELSE 8
+                        END,
+                        channel_name
+                """, int(guild_id))
+                
+                # Convert to the expected format
+                channels = []
+                for row in channels_data:
+                    channels.append({
+                        "id": str(row['channel_id']),
+                        "name": row['channel_name'],
+                        "type": row['channel_type'],
+                        "category": row['channel_purpose'] or 'general',
+                        "category_name": row['category_name'],
+                        "is_active": row['is_active'],
+                        "last_seen": row['last_seen'].isoformat() if row['last_seen'] else None
+                    })
+                
+            except Exception as table_error:
+                # Fallback to old mining_channels + participation approach if new table doesn't exist yet
+                logger.warning(f"New discord_channels table not available, using fallback: {table_error}")
+                
+                # Get channels from mining_channels table  
+                mining_channels = await conn.fetch("""
+                    SELECT DISTINCT channel_id, channel_name 
+                    FROM mining_channels 
+                    WHERE guild_id = $1 AND is_active = true
+                    ORDER BY channel_name
+                """, int(guild_id))
+                
+                # Get channels from participation history
+                participation_channels = await conn.fetch("""
+                    SELECT DISTINCT channel_id, channel_name
+                    FROM participation 
+                    WHERE channel_id IS NOT NULL 
+                      AND channel_name IS NOT NULL 
+                      AND channel_name != ''
+                    ORDER BY channel_name
+                """)
+                
+                # Combine and deduplicate channels
+                channel_dict = {}
+                
+                # Add mining channels
+                for row in mining_channels:
+                    channel_dict[str(row['channel_id'])] = {
+                        "id": str(row['channel_id']),
+                        "name": row['channel_name'],
+                        "type": "voice",
+                        "category": "mining",
+                        "category_name": "Mining Operations"
+                    }
+                
+                # Add participation channels
+                for row in participation_channels:
+                    channel_id = str(row['channel_id'])
+                    if channel_id not in channel_dict:
+                        channel_dict[channel_id] = {
+                            "id": channel_id,
+                            "name": row['channel_name'],
+                            "type": "voice", 
+                            "category": "general",
+                            "category_name": "General"
+                        }
+                
+                # Add Stream/Restricted channel (private channel bot has access to)
+                channel_dict["814699481912049709"] = {
+                    "id": "814699481912049709",
+                    "name": "🎥 Stream/Restricted",
+                    "type": "voice",
+                    "category": "restricted",
+                    "category_name": "Restricted"
+                }
+                
+                # Convert to list and sort by name
+                channels = list(channel_dict.values())
+                channels.sort(key=lambda x: x["name"])
+            
+            return {
+                "channels": channels,
+                "total_count": len(channels),
+                "guild_id": guild_id
+            }
+                
+    except Exception as e:
+        logger.error(f"Error fetching Discord channels: {e}")
+        # Return fallback channels if database query fails
+        fallback_channels = [
+            {"id": "123456789", "name": "🎤 General Voice", "type": "voice", "category": "general"},
+            {"id": "123456790", "name": "⛏️ Mining Alpha", "type": "voice", "category": "mining"},
+            {"id": "123456791", "name": "⛏️ Mining Beta", "type": "voice", "category": "mining"},
+            {"id": "123456792", "name": "🔧 Salvage Ops", "type": "voice", "category": "salvage"},
+            {"id": "814699481912049709", "name": "🎥 Stream/Restricted", "type": "voice", "category": "restricted"}
+        ]
+        return {
+            "channels": fallback_channels,
+            "total_count": len(fallback_channels),
+            "guild_id": guild_id,
+            "error": str(e),
+            "note": "Using fallback data due to database error"
+        }
+
+@app.post("/discord/channels/sync")
+async def sync_discord_channels(guild_id: str = "814699481912049704"):
+    """Sync Discord channels from Discord API using bot integration."""
+    try:
+        pool = await get_db_pool()
+        if pool is None:
+            return {
+                "success": False,
+                "message": "Database not available",
+                "channels_synced": 0
+            }
+        
+        logger.info(f"Starting Discord channel sync for guild {guild_id}")
+        
+        # Use the Discord API client to fetch and sync real channels
+        result = await sync_discord_channels_to_db(guild_id, pool)
+        
+        logger.info(f"Discord channel sync completed: {result}")
+        return result
+                
+    except Exception as e:
+        logger.error(f"Error syncing Discord channels: {e}")
+        return {
+            "success": False,
+            "message": f"Failed to sync channels: {str(e)}",
+            "channels_synced": 0
+        }
+
+@app.post("/discord/channels/add-restricted")
+async def add_restricted_channel():
+    """Add the Stream/Restricted private channel that the bot has access to."""
+    try:
+        pool = await get_db_pool()
+        if pool is None:
+            return {
+                "success": False,
+                "message": "Database not available",
+                "note": "Channel added to fallback lists only"
+            }
+
+        async with pool.acquire() as conn:
+            # Insert or update the restricted channel
+            await conn.execute("""
+                INSERT INTO discord_channels (
+                    guild_id, channel_id, channel_name, channel_type, 
+                    channel_purpose, category_name, is_active, is_trackable, 
+                    last_seen, created_at, updated_at
+                ) VALUES (
+                    $1, $2, $3, $4, $5, $6, $7, $8, NOW(), NOW(), NOW()
+                ) ON CONFLICT (channel_id) DO UPDATE SET 
+                    channel_name = EXCLUDED.channel_name,
+                    channel_purpose = EXCLUDED.channel_purpose,
+                    category_name = EXCLUDED.category_name,
+                    is_active = true,
+                    is_trackable = true,
+                    updated_at = NOW()
+            """, 
+            814699481912049704,  # guild_id
+            814699481912049709,   # channel_id  
+            "Stream/Restricted",   # channel_name
+            "voice",               # channel_type
+            "restricted",          # channel_purpose
+            "Restricted",          # category_name
+            True,                  # is_active
+            True                   # is_trackable
+            )
+
+            return {
+                "success": True,
+                "message": "Stream/Restricted channel added successfully",
+                "channel": {
+                    "id": "814699481912049709",
+                    "name": "Stream/Restricted",
+                    "type": "voice",
+                    "category": "restricted"
+                }
+            }
+
+    except Exception as e:
+        logger.error(f"Error adding restricted channel: {e}")
+        return {
+            "success": False,
+            "message": f"Failed to add restricted channel: {str(e)}"
+        }
+
+
+@app.post("/discord/channels/cleanup")
+async def cleanup_fake_discord_channels():
+    """Remove fake/sample Discord channels that don't exist in the actual Discord server."""
+    try:
+        pool = await get_db_pool()
+        if pool is None:
+            return {
+                "success": False,
+                "message": "Database not available",
+                "channels_removed": 0
+            }
+        
+        async with pool.acquire() as conn:
+            # Find fake channels (channels with fake IDs that don't exist in Discord)
+            fake_channels = await conn.fetch("""
+                SELECT channel_id, channel_name, channel_purpose
+                FROM discord_channels 
+                WHERE channel_id < 1000000000000000000  -- Real Discord IDs are 18+ digits
+                   OR channel_id::text LIKE '999999999999999%'  -- Our sample channels
+                ORDER BY channel_name
+            """)
+            
+            logger.info(f"Found {len(fake_channels)} fake channels to remove")
+            for channel in fake_channels:
+                logger.info(f"  - {channel['channel_name']} (ID: {channel['channel_id']})")
+            
+            if fake_channels:
+                # Remove fake channels
+                result = await conn.execute("""
+                    DELETE FROM discord_channels 
+                    WHERE channel_id < 1000000000000000000
+                       OR channel_id::text LIKE '999999999999999%'
+                """)
+                
+                # Get remaining real channels count
+                real_count = await conn.fetchval("""
+                    SELECT COUNT(*) FROM discord_channels WHERE is_active = true
+                """)
+                
+                logger.info(f"Removed fake channels, {real_count} real channels remaining")
+                
+                return {
+                    "success": True,
+                    "message": f"Removed {len(fake_channels)} fake channels",
+                    "channels_removed": len(fake_channels),
+                    "real_channels_remaining": real_count
+                }
+            else:
+                real_count = await conn.fetchval("""
+                    SELECT COUNT(*) FROM discord_channels WHERE is_active = true
+                """)
+                return {
+                    "success": True,
+                    "message": "No fake channels found to remove",
+                    "channels_removed": 0,
+                    "real_channels_remaining": real_count
+                }
+                
+    except Exception as e:
+        logger.error(f"Error cleaning up fake Discord channels: {e}")
+        return {
+            "success": False,
+            "message": f"Failed to cleanup fake channels: {str(e)}",
+            "channels_removed": 0
+        }
 
 @app.get("/events/{event_id}/participants")
 async def get_event_participants(event_id: str):
@@ -1824,6 +2147,11 @@ async def create_event(request: EventCreationRequest):
                 'started_at': datetime.now().isoformat(),
                 'ended_at': None,
                 'status': 'active',
+                'scheduled_start_time': request.scheduled_start_time.isoformat() if request.scheduled_start_time else None,
+                'auto_start_enabled': request.auto_start_enabled,
+                'tracked_channels': request.tracked_channels,
+                'primary_channel_id': request.primary_channel_id,
+                'event_status': 'live' if request.scheduled_start_time is None else 'scheduled',
                 'message': 'Event created successfully (mock mode)'
             }
         
@@ -1837,8 +2165,9 @@ async def create_event(request: EventCreationRequest):
             await conn.execute("""
                 INSERT INTO events (
                     event_id, event_type, event_name, organizer_name, organizer_id, 
-                    guild_id, started_at, status, location_notes, description, created_at
-                ) VALUES ($1, $2, $3, $4, $5, $6, NOW(), 'open', $7, $8, NOW())
+                    guild_id, started_at, status, location_notes, description, created_at,
+                    scheduled_start_time, auto_start_enabled, tracked_channels, primary_channel_id, event_status
+                ) VALUES ($1, $2, $3, $4, $5, $6, NOW(), 'open', $7, $8, NOW(), $9, $10, $11, $12, $13)
             """, 
                 event_id, 
                 request.event_type,
@@ -1847,20 +2176,57 @@ async def create_event(request: EventCreationRequest):
                 int(request.organizer_id) if request.organizer_id else 0,
                 int(request.guild_id),
                 request.location_notes,
-                request.session_notes
+                request.session_notes,
+                request.scheduled_start_time,
+                request.auto_start_enabled,
+                json.dumps(request.tracked_channels) if request.tracked_channels else None,
+                request.primary_channel_id,
+                'live' if request.scheduled_start_time is None else 'scheduled'
             )
             
             # Fetch the created event
             event_data = await conn.fetchrow("""
                 SELECT event_id, event_name, organizer_name, started_at, status, 
-                       location_notes, description, event_type
+                       location_notes, description, event_type, organizer_id,
+                       scheduled_start_time, auto_start_enabled, tracked_channels, 
+                       primary_channel_id, event_status
                 FROM events WHERE event_id = $1
             """, event_id)
             
+            # Prepare event data for Discord integration
+            discord_event_data = {
+                "event_id": event_data["event_id"],
+                "event_name": event_data["event_name"],
+                "event_type": event_data["event_type"],
+                "organizer_name": event_data["organizer_name"],
+                "organizer_id": str(event_data["organizer_id"]),
+                "location": event_data["location_notes"],
+                "notes": event_data["description"],
+                "tracked_channels": event_data["tracked_channels"],
+                "primary_channel_id": event_data["primary_channel_id"]
+            }
+            
+            # Try to start Discord voice tracking (non-blocking)
+            try:
+                logger.info(f"🎯 Attempting to start Discord voice tracking for event: {event_id}")
+                discord_result = await trigger_voice_tracking_on_event_start(discord_event_data)
+                
+                if discord_result.get("success"):
+                    logger.info(f"✅ Discord voice tracking started successfully for event: {event_id}")
+                    discord_message = "Discord voice tracking started"
+                else:
+                    logger.warning(f"⚠️ Discord voice tracking failed for event {event_id}: {discord_result.get('error', 'Unknown error')}")
+                    discord_message = f"Event created but Discord voice tracking failed: {discord_result.get('error', 'Unknown error')}"
+                    
+            except Exception as e:
+                logger.error(f"❌ Exception during Discord voice tracking setup for event {event_id}: {e}")
+                discord_message = f"Event created but Discord integration failed: {str(e)}"
+            
             return {
                 "success": True,
-                "message": "Mining event created successfully",
-                "event": dict(event_data)
+                "message": f"Mining event created successfully. {discord_message}",
+                "event": dict(event_data),
+                "discord_integration": discord_result if 'discord_result' in locals() else {"success": False, "error": "Integration not attempted"}
             }
             
     except Exception as e:
@@ -1868,6 +2234,69 @@ async def create_event(request: EventCreationRequest):
         import traceback
         logger.error(f"Full traceback: {traceback.format_exc()}")
         raise HTTPException(status_code=500, detail="Failed to create event")
+
+@app.post("/events/{event_id}/start")
+async def start_event(event_id: str):
+    """Start a scheduled mining event and begin voice tracking."""
+    try:
+        pool = await get_db_pool()
+        async with pool.acquire() as conn:
+            # Update event status and start time
+            result = await conn.fetchrow("""
+                UPDATE events 
+                SET status = 'live',
+                    started_at = NOW(),
+                    updated_at = NOW()
+                WHERE event_id = $1 
+                AND status = 'scheduled'
+                RETURNING event_id, event_name, organizer_name, event_type, 
+                         tracked_channels, primary_channel_id, status, started_at
+            """, event_id)
+            
+            if not result:
+                raise HTTPException(status_code=404, detail="Event not found or not in scheduled status")
+            
+            # Prepare Discord event data for voice tracking
+            discord_event_data = {
+                'event_id': result['event_id'],
+                'event_name': result['event_name'],
+                'organizer_name': result['organizer_name'],
+                'event_type': result['event_type'],
+                'tracked_channels': result['tracked_channels'] or [],
+                'primary_channel_id': result['primary_channel_id'],
+                'started_at': result['started_at']
+            }
+            
+            # Start Discord voice tracking
+            try:
+                logger.info(f"🎯 Attempting to start Discord voice tracking for event: {event_id}")
+                discord_result = await trigger_voice_tracking_on_event_start(discord_event_data)
+                
+                if discord_result.get('success'):
+                    logger.info(f"✅ Discord voice tracking started successfully for event: {event_id}")
+                else:
+                    logger.warning(f"⚠️ Discord voice tracking start had issues for event: {event_id}")
+                    
+            except Exception as discord_error:
+                logger.error(f"❌ Failed to start Discord voice tracking for event {event_id}: {discord_error}")
+                # Continue anyway - the event is still started
+                
+            return {
+                "success": True,
+                "message": f"Event '{result['event_name']}' started successfully",
+                "event": {
+                    "event_id": result['event_id'],
+                    "event_name": result['event_name'],
+                    "status": result['status'],
+                    "started_at": result['started_at'].isoformat()
+                },
+                "discord_tracking": discord_result if 'discord_result' in locals() else None
+            }
+            
+    except Exception as e:
+        logger.error(f"❌ Error starting event {event_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to start event: {str(e)}")
+
 
 @app.post("/events/{event_id}/close")
 async def close_event(event_id: str):
@@ -1919,17 +2348,57 @@ async def close_event(event_id: str):
                 WHERE event_id = $3
             """, total_participants, total_duration_minutes, event_id)
             
+            # Try to stop Discord voice tracking (non-blocking)
+            try:
+                logger.info(f"🛑 Attempting to stop Discord voice tracking for event: {event_id}")
+                discord_result = await trigger_voice_tracking_on_event_stop(event_id)
+                
+                if discord_result.get("success"):
+                    logger.info(f"✅ Discord voice tracking stopped successfully for event: {event_id}")
+                    discord_message = "Discord voice tracking stopped"
+                else:
+                    logger.warning(f"⚠️ Discord voice tracking stop failed for event {event_id}: {discord_result.get('error', 'Unknown error')}")
+                    discord_message = f"Event closed but Discord voice tracking stop failed: {discord_result.get('error', 'Unknown error')}"
+                    
+            except Exception as e:
+                logger.error(f"❌ Exception during Discord voice tracking stop for event {event_id}: {e}")
+                discord_message = f"Event closed but Discord integration failed: {str(e)}"
+            
             return {
                 'success': True,
                 'event_id': event_id,
                 'total_participants': total_participants,
                 'total_duration_minutes': total_duration_minutes,
-                'message': 'Event closed successfully'
+                'message': f'Event closed successfully. {discord_message}',
+                'discord_integration': discord_result if 'discord_result' in locals() else {"success": False, "error": "Integration not attempted"}
             }
             
     except Exception as e:
         logger.error(f"Error closing event: {e}")
         raise HTTPException(status_code=500, detail="Failed to close event")
+
+@app.get("/discord/bot-status")
+async def discord_bot_status_endpoint():
+    """Get Discord bot connection status for admin dashboard."""
+    try:
+        logger.info("🔍 Checking Discord bot status")
+        status = await get_discord_bot_status()
+        
+        logger.info(f"🤖 Discord bot status: {'✅ Connected' if status.get('connected') else '❌ Disconnected'}")
+        
+        return {
+            "success": True,
+            "bot_status": status,
+            "message": "Discord bot status retrieved successfully"
+        }
+    except Exception as e:
+        logger.error(f"❌ Error checking Discord bot status: {e}")
+        return {
+            "success": False,
+            "error": str(e),
+            "bot_status": {"connected": False, "error": "Status check failed"},
+            "message": "Failed to check Discord bot status"
+        }
 
 # Trading Locations and Pricing Endpoints
 
@@ -2219,6 +2688,188 @@ async def refresh_uex_cache():
             "error": f"Cache refresh failed: {str(e)}",
             "timestamp": datetime.now().isoformat()
         }
+
+# =====================================================
+# EVENT SCHEDULING & MONITORING ENDPOINTS
+# =====================================================
+
+@app.get("/events/scheduled")
+async def get_scheduled_events():
+    """Get all scheduled events (event_status = 'scheduled')."""
+    try:
+        pool = await get_db_pool()
+        if pool is None:
+            # Return mock scheduled events when database is not available
+            mock_scheduled = [
+                {
+                    'event_id': 'sch-demo01',
+                    'event_name': 'Sunday Mining Session',
+                    'event_type': 'mining',
+                    'scheduled_start_time': (datetime.now() + timedelta(days=1)).isoformat(),
+                    'organizer_name': 'Demo User',
+                    'event_status': 'scheduled',
+                    'auto_start_enabled': True
+                }
+            ]
+            return {"events": mock_scheduled, "count": len(mock_scheduled)}
+        
+        async with pool.acquire() as conn:
+            events = await conn.fetch("""
+                SELECT event_id, event_name, event_type, organizer_name, 
+                       scheduled_start_time, auto_start_enabled, event_status,
+                       tracked_channels, primary_channel_id, created_at
+                FROM events 
+                WHERE event_status IN ('planned', 'scheduled')
+                ORDER BY scheduled_start_time ASC NULLS LAST, created_at DESC
+            """)
+            
+            return {
+                "events": [dict(event) for event in events],
+                "count": len(events)
+            }
+            
+    except Exception as e:
+        logger.error(f"Error fetching scheduled events: {e}")
+        raise HTTPException(status_code=500, detail="Failed to fetch scheduled events")
+
+@app.get("/events/{event_id}/live-metrics")
+async def get_event_live_metrics(event_id: str):
+    """Get real-time metrics for a live event."""
+    try:
+        pool = await get_db_pool()
+        if pool is None:
+            # Return mock live metrics when database is not available
+            return {
+                'event_id': event_id,
+                'current_participants': 5,
+                'total_unique_participants': 12,
+                'event_duration_minutes': 45,
+                'channel_breakdown': {
+                    'Mining Alpha': 3,
+                    'Mining Bravo': 2
+                },
+                'participant_list': [
+                    {'username': 'Pilot1', 'duration_minutes': 45, 'is_active': True},
+                    {'username': 'Pilot2', 'duration_minutes': 30, 'is_active': True}
+                ]
+            }
+        
+        async with pool.acquire() as conn:
+            # Get current event status
+            event_info = await conn.fetchrow("""
+                SELECT event_id, event_name, event_status, started_at
+                FROM events WHERE event_id = $1
+            """, event_id)
+            
+            if not event_info:
+                raise HTTPException(status_code=404, detail="Event not found")
+            
+            # Get current participant metrics
+            participant_stats = await conn.fetchrow("""
+                SELECT 
+                    COUNT(DISTINCT user_id) as total_participants,
+                    COUNT(DISTINCT CASE WHEN is_currently_active THEN user_id END) as active_participants
+                FROM participation 
+                WHERE event_id = $1
+            """, event_id)
+            
+            # Get channel breakdown
+            channel_breakdown = await conn.fetch("""
+                SELECT channel_name, COUNT(DISTINCT user_id) as participant_count
+                FROM participation 
+                WHERE event_id = $1 AND is_currently_active = true
+                GROUP BY channel_name
+            """, event_id)
+            
+            # Get individual participant list
+            participants = await conn.fetch("""
+                SELECT user_id, username, display_name, channel_name,
+                       session_duration_seconds, is_currently_active,
+                       joined_at, last_activity_update
+                FROM participation 
+                WHERE event_id = $1
+                ORDER BY is_currently_active DESC, session_duration_seconds DESC
+            """, event_id)
+            
+            # Calculate event duration
+            event_duration_minutes = 0
+            if event_info['started_at']:
+                duration_seconds = (datetime.now() - event_info['started_at']).total_seconds()
+                event_duration_minutes = int(duration_seconds / 60)
+            
+            return {
+                'event_id': event_id,
+                'event_name': event_info['event_name'],
+                'event_status': event_info['event_status'],
+                'event_duration_minutes': event_duration_minutes,
+                'current_participants': participant_stats['active_participants'] if participant_stats else 0,
+                'total_unique_participants': participant_stats['total_participants'] if participant_stats else 0,
+                'channel_breakdown': {row['channel_name']: row['participant_count'] for row in channel_breakdown},
+                'participant_list': [
+                    {
+                        'user_id': p['user_id'],
+                        'username': p['username'],
+                        'display_name': p['display_name'],
+                        'channel_name': p['channel_name'],
+                        'duration_minutes': int((p['session_duration_seconds'] or 0) / 60),
+                        'is_active': p['is_currently_active'],
+                        'last_activity': p['last_activity_update'].isoformat() if p['last_activity_update'] else None
+                    }
+                    for p in participants
+                ]
+            }
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error fetching live metrics for event {event_id}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to fetch live metrics")
+
+@app.get("/events/{event_id}/participant-history")
+async def get_event_participant_history(event_id: str, hours: int = 24):
+    """Get participant count history for graphing (from event_participant_snapshots)."""
+    try:
+        pool = await get_db_pool()
+        if pool is None:
+            # Return mock participant history
+            now = datetime.now()
+            mock_history = []
+            for i in range(0, hours * 6):  # Every 10 minutes
+                timestamp = now - timedelta(minutes=i * 10)
+                mock_history.append({
+                    'timestamp': timestamp.isoformat(),
+                    'total_participants': random.randint(3, 15),
+                    'active_participants': random.randint(1, 10)
+                })
+            return {'history': mock_history[::-1], 'event_id': event_id}
+        
+        async with pool.acquire() as conn:
+            # Get participant snapshots for the last N hours
+            cutoff_time = datetime.now() - timedelta(hours=hours)
+            
+            snapshots = await conn.fetch("""
+                SELECT snapshot_time, total_participants, active_participants, channel_breakdown
+                FROM event_participant_snapshots
+                WHERE event_id = $1 AND snapshot_time >= $2
+                ORDER BY snapshot_time ASC
+            """, event_id, cutoff_time)
+            
+            return {
+                'event_id': event_id,
+                'history': [
+                    {
+                        'timestamp': snap['snapshot_time'].isoformat(),
+                        'total_participants': snap['total_participants'],
+                        'active_participants': snap['active_participants'],
+                        'channel_breakdown': snap['channel_breakdown']
+                    }
+                    for snap in snapshots
+                ]
+            }
+            
+    except Exception as e:
+        logger.error(f"Error fetching participant history for event {event_id}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to fetch participant history")
 
 if __name__ == "__main__":
     import uvicorn

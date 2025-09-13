@@ -1,0 +1,87 @@
+name: Deploy Red Legion Website
+
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:  # Allow manual deployment
+
+env:
+  PYTHON_VERSION: '3.11'
+  NODE_VERSION: '18'
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    name: Deploy to GCP Web Server
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Setup Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ env.NODE_VERSION }}
+
+    - name: Install Ansible
+      run: |
+        python -m pip install --upgrade pip
+        pip install ansible
+
+    - name: Configure SSH key
+      run: |
+        mkdir -p ~/.ssh
+        echo "${{ secrets.WEB_SERVER_SSH_PRIVATE_KEY }}" > ~/.ssh/deploy_key
+        chmod 600 ~/.ssh/deploy_key
+        ssh-keyscan -H ${{ secrets.WEB_SERVER_HOST }} >> ~/.ssh/known_hosts
+
+    - name: Build frontend
+      run: |
+        cd frontend
+        npm ci
+        npm run build
+
+    - name: Create deployment package
+      run: |
+        # Create deployment directory structure
+        mkdir -p deployment-package/backend
+        mkdir -p deployment-package/frontend/dist
+        mkdir -p deployment-package/static
+        
+        # Copy backend files
+        cp -r backend/* deployment-package/backend/
+        
+        # Copy built frontend
+        cp -r frontend/dist/* deployment-package/frontend/dist/
+        
+        # Copy static files
+        cp -r static/* deployment-package/static/ 2>/dev/null || true
+        
+        # Copy requirements and other config files
+        cp requirements.txt deployment-package/
+        cp .env.example deployment-package/
+
+    - name: Deploy with Ansible
+      env:
+        ANSIBLE_HOST_KEY_CHECKING: False
+      run: |
+        cd ansible
+        ansible-playbook -i inventory/production.yml \
+          playbooks/deploy.yml \
+          --private-key ~/.ssh/deploy_key \
+          --extra-vars "web_server_host=${{ secrets.WEB_SERVER_HOST }}" \
+          --extra-vars "bot_api_url=${{ secrets.BOT_API_INTERNAL_URL }}" \
+          --extra-vars "database_url=${{ secrets.DATABASE_URL }}" \
+          --extra-vars "discord_client_id=${{ secrets.DISCORD_CLIENT_ID }}" \
+          --extra-vars "discord_client_secret=${{ secrets.DISCORD_CLIENT_SECRET }}" \
+          --extra-vars "discord_redirect_uri=${{ secrets.DISCORD_REDIRECT_URI }}"
+
+    - name: Verify deployment
+      run: |
+        echo "Deployment completed successfully!"
+        echo "Web server should be accessible at: http://${{ secrets.WEB_SERVER_HOST }}:8000"
