@@ -92,19 +92,21 @@ async def check_user_guild_roles(access_token: str) -> tuple[bool, list]:
                 logger.info("User not in Red Legion guild")
                 return False, []
                 
-            # For guilds scope, we get basic role info
-            # Check if user has permissions (approximation based on guild permissions)
-            permissions = int(red_legion_guild.get("permissions", 0))
+            # For now, allow any Red Legion guild member access
+            # TODO: Implement proper role checking using Discord's guild member API
+            # or integrate with the Discord bot to check specific roles
+            logger.info(f"User is member of Red Legion guild, granting access")
             
-            # Check for administrator permission (8) or manage_guild (32)
+            # Check if user has admin permissions for additional privileges
+            permissions = int(red_legion_guild.get("permissions", 0))
             has_admin_perms = bool(permissions & 0x8) or bool(permissions & 0x20)
             
             if has_admin_perms:
                 logger.info("User has admin permissions in Red Legion guild")
-                return True, ["admin"]
+                return True, ["admin", "member"]
             else:
-                logger.info("User in Red Legion guild but no admin permissions")
-                return False, []
+                logger.info("User is Red Legion guild member")
+                return True, ["member"]
                 
     except Exception as e:
         logger.error(f"Error checking user roles: {e}")
