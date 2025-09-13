@@ -108,42 +108,51 @@ async def check_user_guild_roles(access_token: str) -> tuple[bool, list]:
             user_data = user_response.json()
             user_id = user_data['id']
             
-            # Try to get roles from the Discord bot API first
+            # Query database for user roles instead of using bot API
             try:
-                bot_response = await client.get(
-                    f"{BOT_API_URL}/users/{user_id}/roles",
-                    timeout=10.0
-                )
-                
-                if bot_response.status_code == 200:
-                    bot_data = bot_response.json()
-                    user_roles = [str(role_id) for role_id in bot_data.get('roles', [])]  # Ensure strings
-                    
-                    logger.info(f"Bot API returned roles for {user_data['username']}: {user_roles}")
-                    
-                    # Check if user has any of the allowed roles
-                    for role_id in user_roles:
-                        if role_id in ALLOWED_ROLE_IDS:
-                            logger.info(f"User has allowed role: {role_id}")
+                pool = await get_db_pool()
+                if pool:
+                    async with pool.acquire() as conn:
+                        # Query guild_memberships table for user roles
+                        membership = await conn.fetchrow("""
+                            SELECT roles, is_active, nickname
+                            FROM guild_memberships 
+                            WHERE user_id = $1 
+                              AND guild_id = $2 
+                              AND is_active = true
+                        """, user_id, RED_LEGION_GUILD_ID)
+                        
+                        if membership and membership['roles']:
+                            user_roles = membership['roles']  # This should be a list/array
+                            logger.info(f"Database returned roles for {user_data['username']}: {user_roles}")
                             
-                            # Determine role names for session
-                            roles = ["member"]
-                            if role_id == ADMIN_ROLE_ID:
-                                roles.append("admin")
-                            if role_id == DEVELOPER_TEAM_ROLE_ID:
-                                roles.append("developer")
-                            if role_id == ORG_LEADERS_ROLE_ID:
-                                roles.append("org_leader")
-                                
-                            return True, roles
-                    
-                    logger.info(f"User has roles {user_roles} but none are in allowed list {list(ALLOWED_ROLE_IDS)}")
-                    return False, []
+                            # Check if user has any of the allowed roles
+                            for role_id in user_roles:
+                                role_id_str = str(role_id)  # Ensure string comparison
+                                if role_id_str in ALLOWED_ROLE_IDS:
+                                    logger.info(f"User has allowed role: {role_id_str}")
+                                    
+                                    # Determine role names for session
+                                    roles = ["member"]
+                                    if role_id_str == ADMIN_ROLE_ID:
+                                        roles.append("admin")
+                                    if role_id_str == DEVELOPER_TEAM_ROLE_ID:
+                                        roles.append("developer")
+                                    if role_id_str == ORG_LEADERS_ROLE_ID:
+                                        roles.append("org_leader")
+                                        
+                                    return True, roles
+                            
+                            logger.info(f"User has roles {user_roles} but none are in allowed list {list(ALLOWED_ROLE_IDS)}")
+                            return False, []
+                        else:
+                            logger.info(f"No active guild membership found for user {user_data['username']} in database")
+                            
                 else:
-                    logger.warning(f"Bot API unavailable ({bot_response.status_code}), falling back to guild permissions")
+                    logger.warning("Database pool not available, falling back to guild permissions")
                     
-            except Exception as bot_error:
-                logger.warning(f"Bot API error: {bot_error}, falling back to guild permissions")
+            except Exception as db_error:
+                logger.warning(f"Database error: {db_error}, falling back to guild permissions")
             
             # Fallback: Check Discord guild permissions if bot API is unavailable
             permissions = int(red_legion_guild.get("permissions", 0))

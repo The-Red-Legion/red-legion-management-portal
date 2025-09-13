@@ -7,6 +7,7 @@ Connects to the Red Legion database and examines tables related to Discord users
 import asyncio
 import asyncpg
 import os
+import sys
 from dotenv import load_dotenv
 
 # Load environment variables
@@ -18,9 +19,25 @@ DATABASE_URL = os.getenv("DATABASE_URL")
 async def analyze_database_schema():
     """Connect to database and analyze schema for Discord-related tables."""
     try:
-        # Connect to database
+        # Connect to database with longer timeout and SSL settings
         print("Connecting to database...")
-        conn = await asyncpg.connect(DATABASE_URL)
+        print(f"Using URL: {DATABASE_URL}")
+        
+        # Parse connection parameters from URL
+        import urllib.parse as urlparse
+        result = urlparse.urlparse(DATABASE_URL)
+        
+        conn = await asyncpg.connect(
+            host=result.hostname,
+            port=result.port or 5432,
+            user=result.username,
+            password=result.password,
+            database=result.path[1:],  # Remove leading slash
+            command_timeout=30,
+            server_settings={
+                'application_name': 'schema_analyzer',
+            }
+        )
         print("✓ Connected successfully!")
         
         # Get all tables in the database
