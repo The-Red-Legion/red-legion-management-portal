@@ -61,8 +61,9 @@ FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:5173")
 # Discord role-based access control constants
 RED_LEGION_GUILD_ID = "814699481912049704"
 ADMIN_ROLE_ID = "814699701861220412"
+DEVELOPER_TEAM_ROLE_ID = "1412561382834180137"
 ORG_LEADERS_ROLE_ID = "1130629722070585396"
-ALLOWED_ROLE_IDS = {ADMIN_ROLE_ID, ORG_LEADERS_ROLE_ID}
+ALLOWED_ROLE_IDS = {ADMIN_ROLE_ID, DEVELOPER_TEAM_ROLE_ID, ORG_LEADERS_ROLE_ID}
 
 async def check_user_guild_roles(access_token: str) -> tuple[bool, list]:
     """Check if user has required roles in Red Legion guild."""
