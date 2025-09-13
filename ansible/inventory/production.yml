@@ -1,0 +1,27 @@
+all:
+  children:
+    web_servers:
+      hosts:
+        web-server:
+          ansible_host: "{{ web_server_host }}"
+          ansible_user: ubuntu
+          ansible_ssh_private_key_file: ~/.ssh/deploy_key
+          ansible_ssh_common_args: '-o StrictHostKeyChecking=no'
+      vars:
+        app_name: red-legion-website
+        app_user: ubuntu
+        app_directory: /opt/red-legion-website
+        python_version: 3.11
+        node_version: 18
+        domain_name: "{{ web_server_host }}"
+        
+        # Application configuration
+        backend_port: 8000
+        frontend_port: 3000  # Not used in production, built files served by backend
+        
+        # Environment variables
+        database_url: "{{ database_url }}"
+        bot_api_url: "{{ bot_api_url }}"
+        discord_client_id: "{{ discord_client_id }}"
+        discord_client_secret: "{{ discord_client_secret }}"
+        discord_redirect_uri: "{{ discord_redirect_uri }}"

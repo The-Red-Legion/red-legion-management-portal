@@ -2,6 +2,7 @@ import { createRouter, createWebHistory } from 'vue-router'
 import Home from '../views/Home.vue'
 import Management from '../views/Management.vue'
 import Events from '../views/Events.vue'
+import LogoutConfirmation from '../views/LogoutConfirmation.vue'
 
 const routes = [
   {
@@ -20,10 +21,9 @@ const routes = [
     component: Events
   },
   {
-    path: '/events/:eventId/monitor',
-    name: 'EventMonitor',
-    component: () => import('../views/EventMonitor.vue'),
-    props: true
+    path: '/logout-confirmation',
+    name: 'LogoutConfirmation',
+    component: LogoutConfirmation
   }
 ]
 

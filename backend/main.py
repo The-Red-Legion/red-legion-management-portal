@@ -18,6 +18,7 @@ import random
 import string
 from datetime import datetime, timedelta
 import io
+import json
 from reportlab.lib.pagesizes import letter, A4
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, PageBreak, Image
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
@@ -30,6 +31,9 @@ from services.discord_integration import (
     trigger_voice_tracking_on_event_stop,
     get_discord_bot_status
 )
+
+# Discord API client
+from services.discord_api import sync_discord_channels_to_db
 
 # Load environment variables
 load_dotenv()
@@ -196,6 +200,11 @@ async def discord_callback(code: str):
         logger.error(f"Discord auth error: {e}")
         raise HTTPException(status_code=400, detail="Authentication failed")
 
+@app.get("/auth/logout")
+async def logout():
+    """Handle logout and redirect to logout confirmation page."""
+    return RedirectResponse("http://localhost:5173/logout-confirmation")
+
 @app.get("/events")
 async def get_events():
     """Get all mining events from database."""
@@ -235,8 +244,6 @@ async def get_events():
                     e.ended_at
                 FROM events e
                 WHERE (e.event_id LIKE 'sm-%' OR e.event_id LIKE 'web-%')
-                AND e.event_type IN ('mining', 'salvage')
-                AND (e.payroll_calculated IS NULL OR e.payroll_calculated = false)
                 ORDER BY e.started_at DESC 
                 LIMIT 50
             """)
@@ -246,6 +253,310 @@ async def get_events():
     except Exception as e:
         logger.error(f"Database error: {e}")
         raise HTTPException(status_code=500, detail="Database error")
+
+@app.get("/discord/channels")
+async def get_discord_channels(guild_id: str = "814699481912049704"):
+    """Get all available Discord voice channels for the guild."""
+    try:
+        pool = await get_db_pool()
+        if pool is None:
+            # Return fallback channels when database is not available
+            fallback_channels = [
+                {"id": "123456789", "name": "🎤 General Voice", "type": "voice", "category": "general"},
+                {"id": "123456790", "name": "⛏️ Mining Alpha", "type": "voice", "category": "mining"},
+                {"id": "123456791", "name": "⛏️ Mining Beta", "type": "voice", "category": "mining"},
+                {"id": "123456792", "name": "🔧 Salvage Ops", "type": "voice", "category": "salvage"},
+                {"id": "123456793", "name": "⚔️ Combat Wing", "type": "voice", "category": "combat"},
+                {"id": "123456794", "name": "🚀 Exploration", "type": "voice", "category": "general"},
+                {"id": "814699481912049709", "name": "🎥 Stream/Restricted", "type": "voice", "category": "restricted"}
+            ]
+            return {
+                "channels": fallback_channels,
+                "total_count": len(fallback_channels),
+                "guild_id": guild_id,
+                "note": "Using fallback data - database unavailable"
+            }
+        
+        async with pool.acquire() as conn:
+            # Try to get channels from new comprehensive discord_channels table
+            try:
+                channels_data = await conn.fetch("""
+                    SELECT 
+                        channel_id,
+                        channel_name,
+                        channel_type,
+                        channel_purpose,
+                        category_name,
+                        is_active,
+                        is_trackable,
+                        last_seen
+                    FROM discord_channels 
+                    WHERE guild_id = $1 
+                      AND is_active = true 
+                      AND is_trackable = true 
+                      AND channel_type = 'voice'
+                    ORDER BY 
+                        CASE channel_purpose 
+                            WHEN 'mining' THEN 1
+                            WHEN 'salvage' THEN 2 
+                            WHEN 'combat' THEN 3
+                            WHEN 'exploration' THEN 4
+                            WHEN 'trading' THEN 5
+                            WHEN 'social' THEN 6
+                            WHEN 'restricted' THEN 7
+                            ELSE 8
+                        END,
+                        channel_name
+                """, int(guild_id))
+                
+                # Convert to the expected format
+                channels = []
+                for row in channels_data:
+                    channels.append({
+                        "id": str(row['channel_id']),
+                        "name": row['channel_name'],
+                        "type": row['channel_type'],
+                        "category": row['channel_purpose'] or 'general',
+                        "category_name": row['category_name'],
+                        "is_active": row['is_active'],
+                        "last_seen": row['last_seen'].isoformat() if row['last_seen'] else None
+                    })
+                
+            except Exception as table_error:
+                # Fallback to old mining_channels + participation approach if new table doesn't exist yet
+                logger.warning(f"New discord_channels table not available, using fallback: {table_error}")
+                
+                # Get channels from mining_channels table  
+                mining_channels = await conn.fetch("""
+                    SELECT DISTINCT channel_id, channel_name 
+                    FROM mining_channels 
+                    WHERE guild_id = $1 AND is_active = true
+                    ORDER BY channel_name
+                """, int(guild_id))
+                
+                # Get channels from participation history
+                participation_channels = await conn.fetch("""
+                    SELECT DISTINCT channel_id, channel_name
+                    FROM participation 
+                    WHERE channel_id IS NOT NULL 
+                      AND channel_name IS NOT NULL 
+                      AND channel_name != ''
+                    ORDER BY channel_name
+                """)
+                
+                # Combine and deduplicate channels
+                channel_dict = {}
+                
+                # Add mining channels
+                for row in mining_channels:
+                    channel_dict[str(row['channel_id'])] = {
+                        "id": str(row['channel_id']),
+                        "name": row['channel_name'],
+                        "type": "voice",
+                        "category": "mining",
+                        "category_name": "Mining Operations"
+                    }
+                
+                # Add participation channels
+                for row in participation_channels:
+                    channel_id = str(row['channel_id'])
+                    if channel_id not in channel_dict:
+                        channel_dict[channel_id] = {
+                            "id": channel_id,
+                            "name": row['channel_name'],
+                            "type": "voice", 
+                            "category": "general",
+                            "category_name": "General"
+                        }
+                
+                # Add Stream/Restricted channel (private channel bot has access to)
+                channel_dict["814699481912049709"] = {
+                    "id": "814699481912049709",
+                    "name": "🎥 Stream/Restricted",
+                    "type": "voice",
+                    "category": "restricted",
+                    "category_name": "Restricted"
+                }
+                
+                # Convert to list and sort by name
+                channels = list(channel_dict.values())
+                channels.sort(key=lambda x: x["name"])
+            
+            return {
+                "channels": channels,
+                "total_count": len(channels),
+                "guild_id": guild_id
+            }
+                
+    except Exception as e:
+        logger.error(f"Error fetching Discord channels: {e}")
+        # Return fallback channels if database query fails
+        fallback_channels = [
+            {"id": "123456789", "name": "🎤 General Voice", "type": "voice", "category": "general"},
+            {"id": "123456790", "name": "⛏️ Mining Alpha", "type": "voice", "category": "mining"},
+            {"id": "123456791", "name": "⛏️ Mining Beta", "type": "voice", "category": "mining"},
+            {"id": "123456792", "name": "🔧 Salvage Ops", "type": "voice", "category": "salvage"},
+            {"id": "814699481912049709", "name": "🎥 Stream/Restricted", "type": "voice", "category": "restricted"}
+        ]
+        return {
+            "channels": fallback_channels,
+            "total_count": len(fallback_channels),
+            "guild_id": guild_id,
+            "error": str(e),
+            "note": "Using fallback data due to database error"
+        }
+
+@app.post("/discord/channels/sync")
+async def sync_discord_channels(guild_id: str = "814699481912049704"):
+    """Sync Discord channels from Discord API using bot integration."""
+    try:
+        pool = await get_db_pool()
+        if pool is None:
+            return {
+                "success": False,
+                "message": "Database not available",
+                "channels_synced": 0
+            }
+        
+        logger.info(f"Starting Discord channel sync for guild {guild_id}")
+        
+        # Use the Discord API client to fetch and sync real channels
+        result = await sync_discord_channels_to_db(guild_id, pool)
+        
+        logger.info(f"Discord channel sync completed: {result}")
+        return result
+                
+    except Exception as e:
+        logger.error(f"Error syncing Discord channels: {e}")
+        return {
+            "success": False,
+            "message": f"Failed to sync channels: {str(e)}",
+            "channels_synced": 0
+        }
+
+@app.post("/discord/channels/add-restricted")
+async def add_restricted_channel():
+    """Add the Stream/Restricted private channel that the bot has access to."""
+    try:
+        pool = await get_db_pool()
+        if pool is None:
+            return {
+                "success": False,
+                "message": "Database not available",
+                "note": "Channel added to fallback lists only"
+            }
+
+        async with pool.acquire() as conn:
+            # Insert or update the restricted channel
+            await conn.execute("""
+                INSERT INTO discord_channels (
+                    guild_id, channel_id, channel_name, channel_type, 
+                    channel_purpose, category_name, is_active, is_trackable, 
+                    last_seen, created_at, updated_at
+                ) VALUES (
+                    $1, $2, $3, $4, $5, $6, $7, $8, NOW(), NOW(), NOW()
+                ) ON CONFLICT (channel_id) DO UPDATE SET 
+                    channel_name = EXCLUDED.channel_name,
+                    channel_purpose = EXCLUDED.channel_purpose,
+                    category_name = EXCLUDED.category_name,
+                    is_active = true,
+                    is_trackable = true,
+                    updated_at = NOW()
+            """, 
+            814699481912049704,  # guild_id
+            814699481912049709,   # channel_id  
+            "Stream/Restricted",   # channel_name
+            "voice",               # channel_type
+            "restricted",          # channel_purpose
+            "Restricted",          # category_name
+            True,                  # is_active
+            True                   # is_trackable
+            )
+
+            return {
+                "success": True,
+                "message": "Stream/Restricted channel added successfully",
+                "channel": {
+                    "id": "814699481912049709",
+                    "name": "Stream/Restricted",
+                    "type": "voice",
+                    "category": "restricted"
+                }
+            }
+
+    except Exception as e:
+        logger.error(f"Error adding restricted channel: {e}")
+        return {
+            "success": False,
+            "message": f"Failed to add restricted channel: {str(e)}"
+        }
+
+
+@app.post("/discord/channels/cleanup")
+async def cleanup_fake_discord_channels():
+    """Remove fake/sample Discord channels that don't exist in the actual Discord server."""
+    try:
+        pool = await get_db_pool()
+        if pool is None:
+            return {
+                "success": False,
+                "message": "Database not available",
+                "channels_removed": 0
+            }
+        
+        async with pool.acquire() as conn:
+            # Find fake channels (channels with fake IDs that don't exist in Discord)
+            fake_channels = await conn.fetch("""
+                SELECT channel_id, channel_name, channel_purpose
+                FROM discord_channels 
+                WHERE channel_id < 1000000000000000000  -- Real Discord IDs are 18+ digits
+                   OR channel_id::text LIKE '999999999999999%'  -- Our sample channels
+                ORDER BY channel_name
+            """)
+            
+            logger.info(f"Found {len(fake_channels)} fake channels to remove")
+            for channel in fake_channels:
+                logger.info(f"  - {channel['channel_name']} (ID: {channel['channel_id']})")
+            
+            if fake_channels:
+                # Remove fake channels
+                result = await conn.execute("""
+                    DELETE FROM discord_channels 
+                    WHERE channel_id < 1000000000000000000
+                       OR channel_id::text LIKE '999999999999999%'
+                """)
+                
+                # Get remaining real channels count
+                real_count = await conn.fetchval("""
+                    SELECT COUNT(*) FROM discord_channels WHERE is_active = true
+                """)
+                
+                logger.info(f"Removed fake channels, {real_count} real channels remaining")
+                
+                return {
+                    "success": True,
+                    "message": f"Removed {len(fake_channels)} fake channels",
+                    "channels_removed": len(fake_channels),
+                    "real_channels_remaining": real_count
+                }
+            else:
+                real_count = await conn.fetchval("""
+                    SELECT COUNT(*) FROM discord_channels WHERE is_active = true
+                """)
+                return {
+                    "success": True,
+                    "message": "No fake channels found to remove",
+                    "channels_removed": 0,
+                    "real_channels_remaining": real_count
+                }
+                
+    except Exception as e:
+        logger.error(f"Error cleaning up fake Discord channels: {e}")
+        return {
+            "success": False,
+            "message": f"Failed to cleanup fake channels: {str(e)}",
+            "channels_removed": 0
+        }
 
 @app.get("/events/{event_id}/participants")
 async def get_event_participants(event_id: str):
@@ -1868,7 +2179,7 @@ async def create_event(request: EventCreationRequest):
                 request.session_notes,
                 request.scheduled_start_time,
                 request.auto_start_enabled,
-                request.tracked_channels,
+                json.dumps(request.tracked_channels) if request.tracked_channels else None,
                 request.primary_channel_id,
                 'live' if request.scheduled_start_time is None else 'scheduled'
             )
@@ -1923,6 +2234,69 @@ async def create_event(request: EventCreationRequest):
         import traceback
         logger.error(f"Full traceback: {traceback.format_exc()}")
         raise HTTPException(status_code=500, detail="Failed to create event")
+
+@app.post("/events/{event_id}/start")
+async def start_event(event_id: str):
+    """Start a scheduled mining event and begin voice tracking."""
+    try:
+        pool = await get_db_pool()
+        async with pool.acquire() as conn:
+            # Update event status and start time
+            result = await conn.fetchrow("""
+                UPDATE events 
+                SET status = 'live',
+                    started_at = NOW(),
+                    updated_at = NOW()
+                WHERE event_id = $1 
+                AND status = 'scheduled'
+                RETURNING event_id, event_name, organizer_name, event_type, 
+                         tracked_channels, primary_channel_id, status, started_at
+            """, event_id)
+            
+            if not result:
+                raise HTTPException(status_code=404, detail="Event not found or not in scheduled status")
+            
+            # Prepare Discord event data for voice tracking
+            discord_event_data = {
+                'event_id': result['event_id'],
+                'event_name': result['event_name'],
+                'organizer_name': result['organizer_name'],
+                'event_type': result['event_type'],
+                'tracked_channels': result['tracked_channels'] or [],
+                'primary_channel_id': result['primary_channel_id'],
+                'started_at': result['started_at']
+            }
+            
+            # Start Discord voice tracking
+            try:
+                logger.info(f"🎯 Attempting to start Discord voice tracking for event: {event_id}")
+                discord_result = await trigger_voice_tracking_on_event_start(discord_event_data)
+                
+                if discord_result.get('success'):
+                    logger.info(f"✅ Discord voice tracking started successfully for event: {event_id}")
+                else:
+                    logger.warning(f"⚠️ Discord voice tracking start had issues for event: {event_id}")
+                    
+            except Exception as discord_error:
+                logger.error(f"❌ Failed to start Discord voice tracking for event {event_id}: {discord_error}")
+                # Continue anyway - the event is still started
+                
+            return {
+                "success": True,
+                "message": f"Event '{result['event_name']}' started successfully",
+                "event": {
+                    "event_id": result['event_id'],
+                    "event_name": result['event_name'],
+                    "status": result['status'],
+                    "started_at": result['started_at'].isoformat()
+                },
+                "discord_tracking": discord_result if 'discord_result' in locals() else None
+            }
+            
+    except Exception as e:
+        logger.error(f"❌ Error starting event {event_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to start event: {str(e)}")
+
 
 @app.post("/events/{event_id}/close")
 async def close_event(event_id: str):
