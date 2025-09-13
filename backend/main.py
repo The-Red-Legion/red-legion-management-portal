@@ -49,6 +49,15 @@ app = FastAPI(
     version="1.0.0"
 )
 
+
+# Database configuration - Reload environment
+load_dotenv()  
+DATABASE_URL = os.getenv("DATABASE_URL_LOCAL", os.getenv("DATABASE_URL"))
+DISCORD_CLIENT_ID = os.getenv("DISCORD_CLIENT_ID")
+DISCORD_CLIENT_SECRET = os.getenv("DISCORD_CLIENT_SECRET")
+DISCORD_REDIRECT_URI = os.getenv("DISCORD_REDIRECT_URI")
+FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:5173")
+
 # CORS configuration - environment aware
 cors_origins = ["http://localhost:5173", "http://127.0.0.1:5173", "http://localhost:5174", "http://127.0.0.1:5174"]
 if FRONTEND_URL and FRONTEND_URL not in cors_origins:
@@ -61,14 +70,6 @@ app.add_middleware(
     allow_methods=["GET", "POST", "PUT", "DELETE"],
     allow_headers=["*"],
 )
-
-# Database configuration - Reload environment
-load_dotenv()  
-DATABASE_URL = os.getenv("DATABASE_URL_LOCAL", os.getenv("DATABASE_URL"))
-DISCORD_CLIENT_ID = os.getenv("DISCORD_CLIENT_ID")
-DISCORD_CLIENT_SECRET = os.getenv("DISCORD_CLIENT_SECRET")
-DISCORD_REDIRECT_URI = os.getenv("DISCORD_REDIRECT_URI")
-FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:5173")
 
 # Pydantic models
 class PayrollCalculationRequest(BaseModel):
