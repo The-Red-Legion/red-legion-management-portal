@@ -16,7 +16,7 @@ from typing import List, Dict, Optional, Any
 import logging
 import random
 import string
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import io
 import json
 from reportlab.lib.pagesizes import letter, A4
@@ -2227,6 +2227,16 @@ async def create_event(request: EventCreationRequest):
             import string
             event_id = f"web-{''.join(random.choices(string.ascii_lowercase + string.digits, k=6))}"
             
+            # Normalize scheduled_start_time to handle timezone-aware datetimes
+            scheduled_start_time = None
+            if request.scheduled_start_time is not None:
+                if request.scheduled_start_time.tzinfo is not None:
+                    # Convert timezone-aware datetime to UTC and make it naive
+                    scheduled_start_time = request.scheduled_start_time.astimezone(timezone.utc).replace(tzinfo=None)
+                else:
+                    # Already timezone-naive
+                    scheduled_start_time = request.scheduled_start_time
+            
             # Insert new event
             await conn.execute("""
                 INSERT INTO events (
@@ -2243,11 +2253,11 @@ async def create_event(request: EventCreationRequest):
                 int(request.guild_id),
                 request.location_notes,
                 request.session_notes,
-                request.scheduled_start_time,
+                scheduled_start_time,
                 request.auto_start_enabled,
                 json.dumps(request.tracked_channels) if request.tracked_channels else None,
                 request.primary_channel_id,
-                'live' if request.scheduled_start_time is None else 'scheduled'
+                'live' if scheduled_start_time is None else 'scheduled'
             )
             
             # Fetch the created event
