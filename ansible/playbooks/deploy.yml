@@ -75,10 +75,17 @@
       tags: deploy
 
     - name: Create Python virtual environment
+      command: python3 -m venv "{{ app_directory }}/venv"
+      become_user: "{{ app_user }}"
+      args:
+        creates: "{{ app_directory }}/venv/bin/activate"
+      tags: deploy
+
+    - name: Install Python requirements
       pip:
         requirements: "{{ app_directory }}/requirements.txt"
         virtualenv: "{{ app_directory }}/venv"
-        virtualenv_python: python3
+        virtualenv_command: "python3 -m venv"
       become_user: "{{ app_user }}"
       tags: deploy
 
