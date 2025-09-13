@@ -80,17 +80,17 @@ jobs:
           sudo systemctl stop red-legion-website-backend || true
           
           # Backup and replace application files
-          sudo rm -rf /opt/red-legion-website/backup
-          sudo mkdir -p /opt/red-legion-website/backup
-          sudo cp -r /opt/red-legion-website/* /opt/red-legion-website/backup/ || true
-          sudo rm -rf /opt/red-legion-website/*
+          sudo rm -rf /opt/red-legion-website/backup || true
+          sudo mkdir -p /opt/red-legion-website/backup || true
+          sudo cp -r /opt/red-legion-website/* /opt/red-legion-website/backup/ 2>/dev/null || true
+          sudo find /opt/red-legion-website -mindepth 1 -not -path '*/backup*' -delete || true
           sudo cp -r /tmp/deployment/* /opt/red-legion-website/
-          sudo chown -R redlegion:redlegion /opt/red-legion-website
+          sudo chown -R ubuntu:ubuntu /opt/red-legion-website
           
           # Create virtual environment and install requirements
           cd /opt/red-legion-website
-          sudo -u redlegion python3 -m venv venv
-          sudo -u redlegion ./venv/bin/pip install -r requirements.txt
+          sudo -u ubuntu python3 -m venv venv
+          sudo -u ubuntu ./venv/bin/pip install -r requirements.txt
           
           # Create environment file
           sudo tee /opt/red-legion-website/.env > /dev/null <<EOF
@@ -103,7 +103,7 @@ jobs:
         EOF
         
           # Fix permissions
-          sudo chown redlegion:redlegion /opt/red-legion-website/.env
+          sudo chown ubuntu:ubuntu /opt/red-legion-website/.env
           sudo chmod 640 /opt/red-legion-website/.env
           
           # Start the service
