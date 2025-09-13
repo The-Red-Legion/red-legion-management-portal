@@ -80,6 +80,7 @@ jobs:
           playbooks/deploy.yml \
           --private-key ~/.ssh/deploy_key \
           --extra-vars "web_server_host=${{ secrets.WEB_SERVER_HOST }}" \
+          --extra-vars "domain_name=${{ secrets.DOMAIN_NAME }}" \
           --extra-vars "bot_api_url=${{ secrets.BOT_API_INTERNAL_URL }}" \
           --extra-vars "database_url=${{ secrets.DATABASE_URL }}" \
           --extra-vars "discord_client_id=${{ secrets.DISCORD_CLIENT_ID }}" \
