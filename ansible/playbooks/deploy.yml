@@ -142,6 +142,27 @@
         state: reloaded
       tags: config
 
+    - name: Check application service status
+      command: systemctl status {{ app_service_name }}
+      register: service_status
+      ignore_errors: yes
+      tags: debug
+
+    - name: Show service status
+      debug:
+        var: service_status.stdout_lines
+      tags: debug
+
+    - name: Check nginx sites enabled
+      command: ls -la /etc/nginx/sites-enabled/
+      register: nginx_sites
+      tags: debug
+
+    - name: Show nginx sites enabled
+      debug:
+        var: nginx_sites.stdout_lines
+      tags: debug
+
   handlers:
     - name: reload systemd
       systemd:
