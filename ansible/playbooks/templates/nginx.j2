@@ -97,5 +97,5 @@ server {
     }
 }
 
-# Rate limiting zones (add to nginx.conf if not present)
-# limit_req_zone $binary_remote_addr zone=auth:10m rate=10r/m;
+# Rate limiting zone definition
+limit_req_zone $binary_remote_addr zone=auth:10m rate=10r/m;
