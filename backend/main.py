@@ -307,7 +307,8 @@ async def get_events():
                     e.system_location, 
                     e.planet_moon, 
                     e.location_notes,
-                    e.ended_at
+                    e.ended_at,
+                    e.event_status
                 FROM events e
                 WHERE (e.event_id LIKE 'sm-%' OR e.event_id LIKE 'web-%')
                 ORDER BY e.started_at DESC 
