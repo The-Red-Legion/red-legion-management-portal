@@ -105,6 +105,57 @@ export const apiService = {
     return response.data
   },
 
+  // Discord Integration
+  async getDiscordChannels() {
+    const response = await api.get('/discord/channels')
+    return response.data
+  },
+
+  // Admin Functions
+  async getAdminEvents() {
+    const response = await api.get('/admin/events')
+    return response.data
+  },
+
+  async deleteAdminEvent(eventId) {
+    const response = await api.delete(`/admin/events/${eventId}`)
+    return response.data
+  },
+
+  async createTestEvent(eventType) {
+    const response = await api.post(`/admin/create-test-event/${eventType}`)
+    return response.data
+  },
+
+  async getPayrollSummary(eventId) {
+    const response = await api.get(`/admin/payroll-summary/${eventId}`)
+    return response.data
+  },
+
+  async exportPayroll(eventId) {
+    const response = await api.get(`/admin/payroll-export/${eventId}`)
+    return response.data
+  },
+
+  async refreshUexCache() {
+    const response = await api.post('/admin/refresh-uex-cache')
+    return response.data
+  },
+
+  async createEvent(eventData) {
+    const response = await api.post('/events/create', eventData)
+    return response.data
+  },
+
+  // Auth redirects - return proper URLs for window.location
+  getLoginUrl() {
+    return `${API_BASE_URL}/auth/login`
+  },
+
+  getLogoutUrl() {
+    return `${API_BASE_URL}/auth/logout`
+  },
+
 }
 
 export default api

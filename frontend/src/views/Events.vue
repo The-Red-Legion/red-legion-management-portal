@@ -593,7 +593,7 @@
 
 <script>
 import { ref, reactive, onMounted, computed } from 'vue'
-import api from '../api.js'
+import api, { apiService } from '../api.js'
 
 export default {
   name: 'Events',
@@ -829,12 +829,7 @@ export default {
 
     const loadDiscordChannels = async () => {
       try {
-        const response = await fetch('http://localhost:8000/discord/channels')
-        if (!response.ok) {
-          throw new Error(`HTTP error! status: ${response.status}`)
-        }
-        
-        const data = await response.json()
+        const data = await apiService.getDiscordChannels()
         availableChannels.value = data.channels || []
         
       } catch (error) {
@@ -921,21 +916,7 @@ export default {
 
         console.log('Creating event with data:', eventData)
 
-        const response = await fetch('http://localhost:8000/events/create', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify(eventData)
-        })
-
-        if (!response.ok) {
-          const errorData = await response.json()
-          console.error('API validation errors:', errorData)
-          throw new Error(`HTTP error! status: ${response.status} - ${JSON.stringify(errorData)}`)
-        }
-
-        const result = await response.json()
+        const result = await apiService.createEvent(eventData)
         createdEvent.value = result.event
         
         createStep.value = 3
