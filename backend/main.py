@@ -49,10 +49,14 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# CORS configuration for local development
+# CORS configuration - environment aware
+cors_origins = ["http://localhost:5173", "http://127.0.0.1:5173", "http://localhost:5174", "http://127.0.0.1:5174"]
+if FRONTEND_URL and FRONTEND_URL not in cors_origins:
+    cors_origins.append(FRONTEND_URL)
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173", "http://localhost:5174", "http://127.0.0.1:5174"],
+    allow_origins=cors_origins,
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE"],
     allow_headers=["*"],
@@ -64,6 +68,7 @@ DATABASE_URL = os.getenv("DATABASE_URL_LOCAL", os.getenv("DATABASE_URL"))
 DISCORD_CLIENT_ID = os.getenv("DISCORD_CLIENT_ID")
 DISCORD_CLIENT_SECRET = os.getenv("DISCORD_CLIENT_SECRET")
 DISCORD_REDIRECT_URI = os.getenv("DISCORD_REDIRECT_URI")
+FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:5173")
 
 # Pydantic models
 class PayrollCalculationRequest(BaseModel):
@@ -194,7 +199,7 @@ async def discord_callback(code: str):
             user_data = user_response.json()
             
         # Redirect to frontend with user data
-        return RedirectResponse(f"http://localhost:5173/?user={user_data['username']}&id={user_data['id']}")
+        return RedirectResponse(f"{FRONTEND_URL}/?user={user_data['username']}&id={user_data['id']}")
         
     except Exception as e:
         logger.error(f"Discord auth error: {e}")
@@ -203,7 +208,7 @@ async def discord_callback(code: str):
 @app.get("/auth/logout")
 async def logout():
     """Handle logout and redirect to logout confirmation page."""
-    return RedirectResponse("http://localhost:5173/logout-confirmation")
+    return RedirectResponse(f"{FRONTEND_URL}/logout-confirmation")
 
 @app.get("/events")
 async def get_events():
