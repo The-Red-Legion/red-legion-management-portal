@@ -13,6 +13,13 @@ from datetime import datetime
 import pytest
 from urllib.parse import unquote, urlparse, urlunparse, quote
 
+# Load environment variables from .env file
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass  # dotenv not available, use system environment
+
 
 class HealthCheckError(Exception):
     """Custom exception for health check failures."""
@@ -27,20 +34,22 @@ async def test_database_connection():
     if not database_url:
         raise HealthCheckError("DATABASE_URL environment variable not set")
     
-    # Handle URL-encoded passwords by properly decoding only the password part
+    # Handle URL-encoded passwords - completely decode and re-encode properly for asyncpg  
     if '%' in database_url:
-        # Parse URL components
-        parsed = urlparse(database_url)
-        if parsed.password and '%' in parsed.password:
-            # Decode password and re-encode only necessary characters (not #)
-            decoded_password = unquote(parsed.password)
-            # Re-encode only @ and : which can interfere with URL parsing, but not #
-            safe_password = quote(decoded_password, safe='#*;<>?!{}[]()=+&')
-            netloc = f"{parsed.username}:{safe_password}@{parsed.hostname}:{parsed.port}"
-            database_url = urlunparse((
-                parsed.scheme, netloc, parsed.path, 
-                parsed.params, parsed.query, parsed.fragment
-            ))
+        # Parse URL components by handling the password specially
+        # Split by @ to separate user:pass from host:port/db
+        if '@' in database_url:
+            scheme_and_auth, host_part = database_url.split('@', 1)
+            if '://' in scheme_and_auth:
+                scheme, auth_part = scheme_and_auth.split('://', 1)
+                if ':' in auth_part:
+                    username, encoded_password = auth_part.split(':', 1)
+                    # Decode the password completely
+                    decoded_password = unquote(encoded_password)
+                    # Re-encode only characters that would break URL parsing ('@', ':', '/', '?', '#')
+                    reencoded_password = quote(decoded_password, safe='*;<>!{}[]()=+&')
+                    # Reconstruct the URL properly for asyncpg
+                    database_url = f"{scheme}://{username}:{reencoded_password}@{host_part}"
     
     try:
         # Test connection to Cloud SQL
