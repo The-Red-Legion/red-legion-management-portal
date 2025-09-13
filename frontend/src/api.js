@@ -8,6 +8,7 @@ const API_BASE_URL = import.meta.env.MODE === 'production'
 const api = axios.create({
   baseURL: API_BASE_URL,
   timeout: 10000,
+  withCredentials: true, // Include cookies in requests
   headers: {
     'Content-Type': 'application/json',
   }
@@ -41,6 +42,11 @@ export const apiService = {
   // Authentication
   async loginWithDiscord() {
     const response = await api.get('/auth/login')
+    return response.data
+  },
+
+  async getCurrentUser() {
+    const response = await api.get('/auth/user')
     return response.data
   },
 

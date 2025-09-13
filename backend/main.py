@@ -147,6 +147,61 @@ class EventCreationRequest(BaseModel):
 # Database connection pool
 db_pool = None
 
+# Session storage (in production, use Redis or database)
+user_sessions = {}
+
+# Authentication models
+class UserSession(BaseModel):
+    user_id: str
+    username: str
+    access_token: str
+    roles: List[str]
+    expires_at: datetime
+
+# Authentication dependencies
+async def get_current_user(request: Request) -> UserSession:
+    """Dependency to get current authenticated user from session."""
+    
+    # Check for session token in cookies
+    session_token = request.cookies.get("session_token")
+    if not session_token:
+        raise HTTPException(
+            status_code=401, 
+            detail="Authentication required",
+            headers={"WWW-Authenticate": "Bearer"}
+        )
+    
+    # Validate session
+    if session_token not in user_sessions:
+        raise HTTPException(
+            status_code=401, 
+            detail="Invalid or expired session",
+            headers={"WWW-Authenticate": "Bearer"}
+        )
+    
+    session = user_sessions[session_token]
+    
+    # Check if session is expired
+    if datetime.now(timezone.utc) > session.expires_at:
+        # Clean up expired session
+        del user_sessions[session_token]
+        raise HTTPException(
+            status_code=401, 
+            detail="Session expired",
+            headers={"WWW-Authenticate": "Bearer"}
+        )
+    
+    return session
+
+async def get_admin_user(current_user: UserSession = Depends(get_current_user)) -> UserSession:
+    """Dependency to ensure user has admin privileges."""
+    if "admin" not in current_user.roles:
+        raise HTTPException(
+            status_code=403,
+            detail="Admin privileges required"
+        )
+    return current_user
+
 # In-memory storage for mock events (when database is not available)
 # Shared mock events storage
 mock_events = []
@@ -279,21 +334,62 @@ async def discord_callback(code: str):
                 # Redirect to access denied page
                 return RedirectResponse(f"{FRONTEND_URL}/access-denied")
             
-        # Redirect to frontend with user data and roles
-        roles_param = "%20".join(roles) if roles else ""
-        return RedirectResponse(f"{FRONTEND_URL}/?user={user_data['username']}&id={user_data['id']}&roles={roles_param}")
+        # Create secure session
+        session_token = ''.join(random.choices(string.ascii_letters + string.digits, k=32))
+        session_expires = datetime.now(timezone.utc) + timedelta(hours=24)
+        
+        # Store session
+        user_sessions[session_token] = UserSession(
+            user_id=user_data['id'],
+            username=user_data['username'],
+            access_token=token_data['access_token'],
+            roles=roles,
+            expires_at=session_expires
+        )
+        
+        logger.info(f"Created session for user {user_data['username']} with roles: {roles}")
+        
+        # Create response with secure cookie
+        response = RedirectResponse(f"{FRONTEND_URL}/")
+        response.set_cookie(
+            key="session_token",
+            value=session_token,
+            max_age=24*60*60,  # 24 hours
+            httponly=True,
+            secure=True if FRONTEND_URL.startswith('https') else False,
+            samesite="lax"
+        )
+        return response
         
     except Exception as e:
         logger.error(f"Discord auth error: {e}")
         raise HTTPException(status_code=400, detail="Authentication failed")
 
 @app.get("/auth/logout")
-async def logout():
+async def logout(request: Request):
     """Handle logout and redirect to logout confirmation page."""
-    return RedirectResponse(f"{FRONTEND_URL}/logout-confirmation")
+    # Get session token and clear it if exists
+    session_token = request.cookies.get("session_token")
+    if session_token and session_token in user_sessions:
+        del user_sessions[session_token]
+        logger.info("User session cleared on logout")
+    
+    # Create response with cleared cookie
+    response = RedirectResponse(f"{FRONTEND_URL}/logout-confirmation")
+    response.delete_cookie("session_token")
+    return response
+
+@app.get("/auth/user")
+async def get_current_user_info(current_user: UserSession = Depends(get_current_user)):
+    """Get current user info - requires authentication."""
+    return {
+        "user_id": current_user.user_id,
+        "username": current_user.username,
+        "roles": current_user.roles
+    }
 
 @app.get("/events")
-async def get_events():
+async def get_events(current_user: UserSession = Depends(get_current_user)):
     """Get all mining events from database."""
     try:
         pool = await get_db_pool()
@@ -343,7 +439,7 @@ async def get_events():
         raise HTTPException(status_code=500, detail="Database error")
 
 @app.get("/discord/channels")
-async def get_discord_channels(guild_id: str = "814699481912049704"):
+async def get_discord_channels(current_user: UserSession = Depends(get_current_user), guild_id: str = "814699481912049704"):
     """Get all available Discord voice channels for the guild."""
     try:
         pool = await get_db_pool()
@@ -495,7 +591,7 @@ async def get_discord_channels(guild_id: str = "814699481912049704"):
         }
 
 @app.post("/discord/channels/sync")
-async def sync_discord_channels(guild_id: str = "814699481912049704"):
+async def sync_discord_channels(current_user: UserSession = Depends(get_current_user), guild_id: str = "814699481912049704"):
     """Sync Discord channels from Discord API using bot integration."""
     try:
         pool = await get_db_pool()
@@ -523,7 +619,7 @@ async def sync_discord_channels(guild_id: str = "814699481912049704"):
         }
 
 @app.post("/discord/channels/add-restricted")
-async def add_restricted_channel():
+async def add_restricted_channel(current_user: UserSession = Depends(get_current_user)):
     """Add the Stream/Restricted private channel that the bot has access to."""
     try:
         pool = await get_db_pool()
@@ -581,7 +677,7 @@ async def add_restricted_channel():
 
 
 @app.post("/discord/channels/cleanup")
-async def cleanup_fake_discord_channels():
+async def cleanup_fake_discord_channels(current_user: UserSession = Depends(get_current_user)):
     """Remove fake/sample Discord channels that don't exist in the actual Discord server."""
     try:
         pool = await get_db_pool()
@@ -647,7 +743,7 @@ async def cleanup_fake_discord_channels():
         }
 
 @app.get("/events/{event_id}/participants")
-async def get_event_participants(event_id: str):
+async def get_event_participants(current_user: UserSession = Depends(get_current_user), event_id: str):
     """Get participants for a specific event with real-time duration for live events."""
     try:
         pool = await get_db_pool()
@@ -708,7 +804,7 @@ async def get_event_participants(event_id: str):
         raise HTTPException(status_code=500, detail="Database error")
 
 @app.post("/payroll/{event_id}/calculate")
-async def calculate_payroll(event_id: str, request: PayrollCalculationRequest):
+async def calculate_payroll(current_user: UserSession = Depends(get_current_user), event_id: str, request: PayrollCalculationRequest):
     """Calculate payroll for an event (simplified version of bot logic)."""
     try:
         pool = await get_db_pool()
@@ -810,7 +906,7 @@ async def calculate_payroll(event_id: str, request: PayrollCalculationRequest):
         raise HTTPException(status_code=500, detail="Calculation error")
 
 @app.post("/payroll/{event_id}/finalize")
-async def finalize_payroll(event_id: str, request: PayrollCalculationRequest):
+async def finalize_payroll(current_user: UserSession = Depends(get_current_user), event_id: str, request: PayrollCalculationRequest):
     """Save payroll calculation to database and mark as completed."""
     try:
         pool = await get_db_pool()
@@ -949,13 +1045,13 @@ async def finalize_payroll(event_id: str, request: PayrollCalculationRequest):
         raise HTTPException(status_code=500, detail="Failed to finalize payroll")
 
 @app.get("/uex-prices")
-async def get_uex_prices_endpoint():
+async def get_uex_prices_endpoint(current_user: UserSession = Depends(get_current_user)):
     """Get current UEX ore prices."""
     prices = await get_uex_prices()
     return prices
 
 @app.get("/admin/events")
-async def get_all_events():
+async def get_all_events(admin_user: UserSession = Depends(get_admin_user)):
     """Get all events with their associated payroll data for management."""
     try:
         pool = await get_db_pool()
@@ -1004,7 +1100,7 @@ async def get_all_events():
         raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
 
 @app.delete("/admin/events/{event_id}")
-async def delete_event(event_id: str):
+async def delete_event(admin_user: UserSession = Depends(get_admin_user), event_id: str):
     """Delete an event and all associated data."""
     try:
         pool = await get_db_pool()
@@ -1088,7 +1184,7 @@ async def delete_event(event_id: str):
         raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
 
 @app.get("/admin/payroll-summary/{event_id}")
-async def get_payroll_summary(event_id: str):
+async def get_payroll_summary(admin_user: UserSession = Depends(get_admin_user), event_id: str):
     """Get detailed payroll summary for an event."""
     try:
         pool = await get_db_pool()
@@ -1749,7 +1845,7 @@ async def generate_pdf_with_playwright(event_data: dict, payroll_data: dict) -> 
         raise HTTPException(status_code=500, detail=f"PDF generation failed: {str(e)}")
 
 @app.get("/admin/payroll-export/{event_id}")
-async def export_payroll_pdf(event_id: str):
+async def export_payroll_pdf(admin_user: UserSession = Depends(get_admin_user), event_id: str):
     """Export payroll summary as PDF using Playwright."""
     try:
         pool = await get_db_pool()
@@ -2019,7 +2115,7 @@ async def export_payroll_pdf(event_id: str):
 #        raise HTTPException(status_code=500, detail=f"PDF generation error: {str(e)}")
 
 @app.post("/admin/create-test-event/{event_type}")
-async def create_test_event(event_type: str):
+async def create_test_event(admin_user: UserSession = Depends(get_admin_user), event_type: str):
     """Create a test event with random participants and data."""
     if event_type not in ["mining", "salvage"]:
         raise HTTPException(status_code=400, detail="Event type must be 'mining' or 'salvage'")
@@ -2219,7 +2315,7 @@ async def generate_fake_participants(count: int):
     return participants
 
 @app.post("/events/create")
-async def create_event(request: EventCreationRequest):
+async def create_event(current_user: UserSession = Depends(get_current_user), request: EventCreationRequest):
     """Create a new mining event compatible with payroll system."""
     try:
         pool = await get_db_pool()
@@ -2334,7 +2430,7 @@ async def create_event(request: EventCreationRequest):
         raise HTTPException(status_code=500, detail="Failed to create event")
 
 @app.post("/events/{event_id}/start")
-async def start_event(event_id: str):
+async def start_event(current_user: UserSession = Depends(get_current_user), event_id: str):
     """Start a scheduled mining event and begin voice tracking."""
     try:
         pool = await get_db_pool()
@@ -2397,7 +2493,7 @@ async def start_event(event_id: str):
 
 
 @app.post("/events/{event_id}/close")
-async def close_event(event_id: str):
+async def close_event(current_user: UserSession = Depends(get_current_user), event_id: str):
     """Close a mining event and calculate final stats."""
     try:
         pool = await get_db_pool()
@@ -2476,7 +2572,7 @@ async def close_event(event_id: str):
         raise HTTPException(status_code=500, detail="Failed to close event")
 
 @app.get("/discord/bot-status")
-async def discord_bot_status_endpoint():
+async def discord_bot_status_endpoint(current_user: UserSession = Depends(get_current_user)):
     """Get Discord bot connection status for admin dashboard."""
     try:
         logger.info("🔍 Checking Discord bot status")
@@ -2501,7 +2597,7 @@ async def discord_bot_status_endpoint():
 # Trading Locations and Pricing Endpoints
 
 @app.get("/trading-locations")
-async def get_trading_locations():
+async def get_trading_locations(current_user: UserSession = Depends(get_current_user)):
     """Get all active trading locations."""
     try:
         pool = await get_db_pool()
@@ -2521,7 +2617,7 @@ async def get_trading_locations():
         raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
 
 @app.get("/material-prices/{material_names}")
-async def get_material_prices(material_names: str, location_id: int = None):
+async def get_material_prices(current_user: UserSession = Depends(get_current_user), material_names: str, location_id: int = None):
     """Get material prices, optionally for a specific location.
     
     material_names can be a comma-separated list of material names.
@@ -2581,7 +2677,7 @@ async def get_material_prices(material_names: str, location_id: int = None):
         raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
 
 @app.get("/location-prices/{location_id}")
-async def get_location_prices(location_id: int, material_names: str = None):
+async def get_location_prices(current_user: UserSession = Depends(get_current_user), location_id: int, material_names: str = None):
     """Get all material prices for a specific location.
     
     Optionally filter by material_names (comma-separated).
@@ -2702,7 +2798,7 @@ async def get_uex_prices() -> Dict[str, float]:
     return default_prices
 
 @app.post("/admin/refresh-uex-cache")
-async def refresh_uex_cache():
+async def refresh_uex_cache(admin_user: UserSession = Depends(get_admin_user)):
     """Force refresh of UEX price cache to get current market prices."""
     logger.info("🔄 Manual UEX cache refresh requested")
     
@@ -2792,7 +2888,7 @@ async def refresh_uex_cache():
 # =====================================================
 
 @app.get("/events/scheduled")
-async def get_scheduled_events():
+async def get_scheduled_events(current_user: UserSession = Depends(get_current_user)):
     """Get all scheduled events (event_status = 'scheduled')."""
     try:
         pool = await get_db_pool()
@@ -2831,7 +2927,7 @@ async def get_scheduled_events():
         raise HTTPException(status_code=500, detail="Failed to fetch scheduled events")
 
 @app.get("/events/{event_id}/live-metrics")
-async def get_event_live_metrics(event_id: str):
+async def get_event_live_metrics(current_user: UserSession = Depends(get_current_user), event_id: str):
     """Get real-time metrics for a live event."""
     try:
         pool = await get_db_pool()
@@ -2924,7 +3020,7 @@ async def get_event_live_metrics(event_id: str):
         raise HTTPException(status_code=500, detail="Failed to fetch live metrics")
 
 @app.get("/events/{event_id}/participant-history")
-async def get_event_participant_history(event_id: str, hours: int = 24):
+async def get_event_participant_history(current_user: UserSession = Depends(get_current_user), event_id: str, hours: int = 24):
     """Get participant count history for graphing (from event_participant_snapshots)."""
     try:
         pool = await get_db_pool()

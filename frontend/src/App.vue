@@ -40,7 +40,12 @@
     </header>
 
     <!-- Main Content -->
-    <router-view :user="user" @login="handleLogin" />
+    <div v-if="user">
+      <router-view :user="user" @login="handleLogin" />
+    </div>
+    <div v-else>
+      <LoginPage @login="handleLogin" />
+    </div>
 
 
 
@@ -56,12 +61,16 @@
 <script>
 import { ref, onMounted } from 'vue'
 import { apiService } from './api.js'
+import LoginPage from './components/LoginPage.vue'
 
 export default {
   name: 'App',
+  components: {
+    LoginPage
+  },
   setup() {
-    // Mock user for development (OAuth disabled)
-    const user = ref({ username: "DevUser", id: "123456789", roles: ["admin"] })
+    // User state - will be null until authenticated
+    const user = ref(null)
 
     const handleLogin = (userData) => {
       user.value = userData
@@ -74,31 +83,21 @@ export default {
     }
 
 
-    onMounted(() => {
+    onMounted(async () => {
       console.log('🚀 App mounted, checking authentication...')
       
-      // Check URL params for OAuth callback
-      const urlParams = new URLSearchParams(window.location.search)
-      const username = urlParams.get('user')
-      const id = urlParams.get('id')
-      const roles = urlParams.get('roles')
-      
-      console.log('📋 URL params:', { username, id, roles })
-      
-      if (username && id) {
-        const userData = { username, id, roles: roles ? roles.split('%20') : [] }
-        console.log('✅ Found OAuth params, logging in user:', userData)
-        handleLogin(userData)
-        // Clean up URL
-        window.history.replaceState({}, document.title, '/')
-      } else {
-        // Check localStorage
-        const savedUser = localStorage.getItem('red_legion_user')
-        console.log('💾 Checking localStorage:', savedUser)
-        if (savedUser) {
-          user.value = JSON.parse(savedUser)
-          console.log('✅ Restored user from localStorage:', user.value)
-        }
+      try {
+        // Check if user is authenticated by calling the backend
+        const response = await apiService.getCurrentUser()
+        console.log('✅ User is authenticated:', response)
+        user.value = response
+        // Save to localStorage for offline reference
+        localStorage.setItem('red_legion_user', JSON.stringify(response))
+      } catch (error) {
+        console.log('❌ User not authenticated:', error.response?.status)
+        // Clear any stale localStorage data
+        localStorage.removeItem('red_legion_user')
+        user.value = null
       }
     })
 
