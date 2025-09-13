@@ -136,6 +136,12 @@
       changed_when: false
       tags: config
 
+    - name: Force nginx reload
+      systemd:
+        name: nginx
+        state: reloaded
+      tags: config
+
   handlers:
     - name: reload systemd
       systemd:
