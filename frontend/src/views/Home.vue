@@ -1,19 +1,9 @@
 <template>
   <!-- Main Content -->
   <main class="max-w-7xl mx-auto px-4 py-8">
-    <!-- Auth bypass for testing -->
-    <div v-if="!user" class="text-center mb-8">
-      <p class="text-white mb-4">Authentication bypass for testing:</p>
-      <a 
-        href="http://34.28.1.154:8000/auth/login" 
-        class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg inline-block"
-      >
-        Login via Backend (Port 8000)
-      </a>
-    </div>
-    
-    <LoginPage v-if="!user" @login="handleLogin" />
-    <PayrollWizard v-else :user="user" />
+    <!-- OAuth temporarily disabled for development -->
+    <!-- <LoginPage v-if="!user" @login="handleLogin" /> -->
+    <PayrollWizard :user="mockUser" />
   </main>
 </template>
 
@@ -35,6 +25,14 @@ export default {
     }
   },
   setup(props, { emit }) {
+    // Mock user for development (OAuth disabled)
+    const mockUser = {
+      username: "DevUser",
+      id: "123456789",
+      roles: ["admin"]
+    }
+    
+    /* OAuth logic temporarily disabled
     const user = ref(null)
     
     const handleLogin = (userData) => {
@@ -63,10 +61,10 @@ export default {
         }
       }
     })
+    */
 
     return {
-      user,
-      handleLogin
+      mockUser
     }
   }
 }

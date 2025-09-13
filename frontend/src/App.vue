@@ -8,7 +8,7 @@
             <img src="/red-legion-logo.png" alt="Red Legion" class="h-12 w-12" />
             <h1 class="text-2xl font-bold text-red-legion-500">Red Legion Payroll</h1>
           </div>
-          <div v-if="user" class="flex items-center space-x-4">
+          <div class="flex items-center space-x-4">
             <span class="text-space-gray-300">Welcome, {{ user.username }}</span>
             <router-link 
               to="/events" 
@@ -60,7 +60,8 @@ import { apiService } from './api.js'
 export default {
   name: 'App',
   setup() {
-    const user = ref(null)
+    // Mock user for development (OAuth disabled)
+    const user = ref({ username: "DevUser", id: "123456789", roles: ["admin"] })
 
     const handleLogin = (userData) => {
       user.value = userData
