@@ -2402,7 +2402,7 @@ async def discord_bot_status_endpoint():
 
 # Trading Locations and Pricing Endpoints
 
-@app.get("/api/trading-locations")
+@app.get("/trading-locations")
 async def get_trading_locations():
     """Get all active trading locations."""
     try:
@@ -2422,7 +2422,7 @@ async def get_trading_locations():
         logger.error(f"Error fetching trading locations: {e}")
         raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
 
-@app.get("/api/material-prices/{material_names}")
+@app.get("/material-prices/{material_names}")
 async def get_material_prices(material_names: str, location_id: int = None):
     """Get material prices, optionally for a specific location.
     
@@ -2482,7 +2482,7 @@ async def get_material_prices(material_names: str, location_id: int = None):
         logger.error(f"Error fetching material prices: {e}")
         raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
 
-@app.get("/api/location-prices/{location_id}")
+@app.get("/location-prices/{location_id}")
 async def get_location_prices(location_id: int, material_names: str = None):
     """Get all material prices for a specific location.
     

@@ -40,8 +40,9 @@ server {
         add_header Cache-Control "public, immutable";
     }
 
-    # Explicit API routes
+    # Explicit API routes - strip /api prefix and forward to backend
     location /api/ {
+        rewrite ^/api/(.*) /$1 break;
         proxy_pass http://127.0.0.1:{{ backend_port }};
         proxy_http_version 1.1;
         proxy_set_header Host $host;
@@ -87,8 +88,9 @@ server {
         return 404;
     }
 
-    # Rate limiting for API endpoints
+    # Rate limiting for API endpoints - strip /api prefix
     location ~* ^/api/(auth|login|register) {
+        rewrite ^/api/(.*) /$1 break;
         proxy_pass http://127.0.0.1:{{ backend_port }};
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
