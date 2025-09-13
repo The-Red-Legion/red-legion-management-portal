@@ -155,13 +155,13 @@ export const apiService = {
 
   // Auth redirects - return proper URLs for window.location
   getLoginUrl() {
-    // Auth endpoints are directly routed, not through /api prefix
-    return import.meta.env.MODE === 'production' ? '/auth/login' : 'http://localhost:8000/auth/login'
+    // Auth endpoints go through /api prefix like all other endpoints
+    return import.meta.env.MODE === 'production' ? '/api/auth/login' : 'http://localhost:8000/auth/login'
   },
 
   getLogoutUrl() {
-    // Auth endpoints are directly routed, not through /api prefix
-    return import.meta.env.MODE === 'production' ? '/auth/logout' : 'http://localhost:8000/auth/logout'
+    // Auth endpoints go through /api prefix like all other endpoints
+    return import.meta.env.MODE === 'production' ? '/api/auth/logout' : 'http://localhost:8000/auth/logout'
   },
 
 }
