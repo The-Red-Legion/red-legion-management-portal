@@ -53,6 +53,12 @@
       ignore_errors: yes
       tags: deploy
 
+    - name: Remove existing virtual environment to avoid permission issues
+      file:
+        path: "{{ app_directory }}/venv"
+        state: absent
+      tags: deploy
+
     - name: Copy application files
       synchronize:
         src: "{{ playbook_dir }}/../../deployment-package/"
@@ -63,6 +69,7 @@
           - "--exclude=node_modules"
           - "--exclude=__pycache__"
           - "--exclude=*.pyc"
+          - "--exclude=venv"
       become_user: "{{ app_user }}"
       tags: deploy
 
