@@ -213,10 +213,21 @@
         var: service_logs.stdout_lines
       tags: debug
 
-    - name: Restart application service
+    - name: Stop service to clear failed state
       systemd:
         name: "{{ app_service_name }}"
-        state: restarted
+        state: stopped
+      tags: debug
+
+    - name: Reset service failure count
+      command: systemctl reset-failed "{{ app_service_name }}"
+      ignore_errors: yes
+      tags: debug
+
+    - name: Start service with fresh dependencies
+      systemd:
+        name: "{{ app_service_name }}"
+        state: started
         daemon_reload: yes
       tags: debug
 
@@ -226,6 +237,16 @@
         host: "127.0.0.1"
         delay: 5
         timeout: 30
+      tags: debug
+
+    - name: Check fresh service logs after restart
+      command: journalctl -u {{ app_service_name }} --since "5 minutes ago" --no-pager
+      register: fresh_service_logs
+      tags: debug
+
+    - name: Show fresh service logs
+      debug:
+        var: fresh_service_logs.stdout_lines
       tags: debug
 
   handlers:
