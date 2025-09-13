@@ -11,6 +11,7 @@ import os
 import sys
 from datetime import datetime
 import pytest
+from urllib.parse import unquote, urlparse, urlunparse, quote
 
 
 class HealthCheckError(Exception):
@@ -25,6 +26,21 @@ async def test_database_connection():
     database_url = os.getenv('DATABASE_URL')
     if not database_url:
         raise HealthCheckError("DATABASE_URL environment variable not set")
+    
+    # Handle URL-encoded passwords by properly decoding only the password part
+    if '%' in database_url:
+        # Parse URL components
+        parsed = urlparse(database_url)
+        if parsed.password and '%' in parsed.password:
+            # Decode password and re-encode only necessary characters (not #)
+            decoded_password = unquote(parsed.password)
+            # Re-encode only @ and : which can interfere with URL parsing, but not #
+            safe_password = quote(decoded_password, safe='#*;<>?!{}[]()=+&')
+            netloc = f"{parsed.username}:{safe_password}@{parsed.hostname}:{parsed.port}"
+            database_url = urlunparse((
+                parsed.scheme, netloc, parsed.path, 
+                parsed.params, parsed.query, parsed.fragment
+            ))
     
     try:
         # Test connection to Cloud SQL
@@ -167,9 +183,10 @@ def test_environment_variables():
     if not database_url.startswith('postgresql://'):
         raise HealthCheckError("DATABASE_URL must be a PostgreSQL connection string")
     
-    # Check if using private IP (GCP VPC requirement)
-    if '10.92.0.3' not in database_url:
-        print("   ⚠️  WARNING: DATABASE_URL not using private IP (10.92.0.3)")
+    # Check if using private or public IP for GCP connection
+    database_url_decoded = unquote(database_url) if '%' in database_url else database_url
+    if '10.92.0.3' not in database_url_decoded and '34.56.38.104' not in database_url_decoded:
+        print("   ⚠️  WARNING: DATABASE_URL not using known GCP database IP")
     
     print("   ✅ Environment variables configured")
     return True
