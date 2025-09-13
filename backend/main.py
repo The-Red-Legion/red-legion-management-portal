@@ -2712,7 +2712,7 @@ async def get_scheduled_events():
                     'event_name': 'Sunday Mining Session',
                     'event_type': 'mining',
                     'scheduled_start_time': (datetime.now() + timedelta(days=1)).isoformat(),
-                    'organizer_name': 'Demo User',
+                    'organizer_name': 'Red Legion Admin',
                     'event_status': 'scheduled',
                     'auto_start_enabled': True
                 }

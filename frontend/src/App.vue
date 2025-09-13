@@ -89,15 +89,6 @@ export default {
         const savedUser = localStorage.getItem('red_legion_user')
         if (savedUser) {
           user.value = JSON.parse(savedUser)
-        } else {
-          // Temporary bypass for testing - auto-login with demo user
-          console.log('Auto-logging in with demo user for testing')
-          const demoUser = { 
-            username: 'demo_user', 
-            id: '123456789',
-            display_name: 'Demo User' 
-          }
-          handleLogin(demoUser)
         }
       }
     })

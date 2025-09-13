@@ -767,7 +767,7 @@ export default {
             event_id: 'demo-scheduled',
             event_name: 'Sunday Mining Session',
             event_type: 'mining',
-            organizer_name: 'Demo User',
+            organizer_name: 'Red Legion Admin',
             event_status: 'scheduled',
             scheduled_start_time: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
             auto_start_enabled: true,

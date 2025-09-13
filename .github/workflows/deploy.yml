@@ -33,17 +33,12 @@ jobs:
         python -m pip install --upgrade pip
         pip install ansible
 
-    - name: Configure SSH key
-      run: |
-        mkdir -p ~/.ssh
-        echo "${{ secrets.WEB_SERVER_SSH_PRIVATE_KEY }}" > ~/.ssh/deploy_key
-        chmod 600 ~/.ssh/deploy_key
-        if [ -n "${{ secrets.WEB_SERVER_HOST }}" ]; then
-          ssh-keyscan -H ${{ secrets.WEB_SERVER_HOST }} >> ~/.ssh/known_hosts
-        else
-          echo "Warning: WEB_SERVER_HOST secret is not set"
-          exit 1
-        fi
+    - name: Setup Google Cloud
+      uses: google-github-actions/setup-gcloud@v1
+      with:
+        service_account_key: ${{ secrets.GCP_CREDENTIALS }}
+        project_id: ${{ secrets.GCP_PROJECT_ID }}
+        export_default_credentials: true
 
     - name: Build frontend
       run: |
@@ -71,23 +66,54 @@ jobs:
         cp requirements.txt deployment-package/
         cp .env.example deployment-package/
 
-    - name: Deploy with Ansible
-      env:
-        ANSIBLE_HOST_KEY_CHECKING: False
+    - name: Deploy with GCloud
       run: |
-        cd ansible
-        ansible-playbook -i inventory/production.yml \
-          playbooks/deploy.yml \
-          --private-key ~/.ssh/deploy_key \
-          --extra-vars "web_server_host=${{ secrets.WEB_SERVER_HOST }}" \
-          --extra-vars "domain_name=${{ secrets.DOMAIN_NAME }}" \
-          --extra-vars "bot_api_url=${{ secrets.BOT_API_INTERNAL_URL }}" \
-          --extra-vars "database_url=${{ secrets.DATABASE_URL }}" \
-          --extra-vars "discord_client_id=${{ secrets.DISCORD_CLIENT_ID }}" \
-          --extra-vars "discord_client_secret=${{ secrets.DISCORD_CLIENT_SECRET }}" \
-          --extra-vars "discord_redirect_uri=${{ secrets.DISCORD_REDIRECT_URI }}"
+        # Copy deployment package to VM
+        gcloud compute scp --recurse deployment-package/* ubuntu@arccorp-web-server:/tmp/deployment/ --zone us-central1-a
+        
+        # Deploy using gcloud ssh
+        gcloud compute ssh ubuntu@arccorp-web-server --zone us-central1-a --command "
+          # Stop existing service
+          sudo systemctl stop red-legion-website-backend || true
+          
+          # Backup and replace application files
+          sudo rm -rf /opt/red-legion-website/backup
+          sudo mkdir -p /opt/red-legion-website/backup
+          sudo cp -r /opt/red-legion-website/* /opt/red-legion-website/backup/ || true
+          sudo rm -rf /opt/red-legion-website/*
+          sudo cp -r /tmp/deployment/* /opt/red-legion-website/
+          sudo chown -R redlegion:redlegion /opt/red-legion-website
+          
+          # Create virtual environment and install requirements
+          cd /opt/red-legion-website
+          sudo -u redlegion python3 -m venv venv
+          sudo -u redlegion ./venv/bin/pip install -r requirements.txt
+          
+          # Create environment file
+          sudo tee /opt/red-legion-website/.env > /dev/null <<EOF
+        DATABASE_URL='${{ secrets.DATABASE_URL }}'
+        BOT_API_URL='${{ secrets.BOT_API_INTERNAL_URL }}'
+        DOMAIN_NAME='${{ secrets.DOMAIN_NAME }}'
+        DISCORD_CLIENT_ID='${{ secrets.DISCORD_CLIENT_ID }}'
+        DISCORD_CLIENT_SECRET='${{ secrets.DISCORD_CLIENT_SECRET }}'
+        DISCORD_REDIRECT_URI='${{ secrets.DISCORD_REDIRECT_URI }}'
+        EOF
+        
+          # Fix permissions
+          sudo chown redlegion:redlegion /opt/red-legion-website/.env
+          sudo chmod 640 /opt/red-legion-website/.env
+          
+          # Start the service
+          sudo systemctl start red-legion-website-backend
+          sudo systemctl enable red-legion-website-backend
+          
+          # Wait for service to start and check status
+          sleep 5
+          sudo systemctl status red-legion-website-backend
+        "
 
     - name: Verify deployment
       run: |
         echo "Deployment completed successfully!"
-        echo "Web server should be accessible at: http://${{ secrets.WEB_SERVER_HOST }}:8000"
+        echo "Web server should be accessible at: http://34.28.1.154:8000"
+        echo "Domain: ${{ secrets.DOMAIN_NAME }}"
