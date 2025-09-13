@@ -38,7 +38,12 @@ jobs:
         mkdir -p ~/.ssh
         echo "${{ secrets.WEB_SERVER_SSH_PRIVATE_KEY }}" > ~/.ssh/deploy_key
         chmod 600 ~/.ssh/deploy_key
-        ssh-keyscan -H ${{ secrets.WEB_SERVER_HOST }} >> ~/.ssh/known_hosts
+        if [ -n "${{ secrets.WEB_SERVER_HOST }}" ]; then
+          ssh-keyscan -H ${{ secrets.WEB_SERVER_HOST }} >> ~/.ssh/known_hosts
+        else
+          echo "Warning: WEB_SERVER_HOST secret is not set"
+          exit 1
+        fi
 
     - name: Build frontend
       run: |
