@@ -23,7 +23,7 @@ class TestOAuthIntegrationFlow:
         print("🔄 Testing OAuth redirect generation...")
         
         client_id = "test_client_id_123456"
-        redirect_uri = "https://arccorp-web.redlegion.org/auth/callback"
+        redirect_uri = "https://dev.redlegion.gg/auth/callback"
         state = "random_state_token_abc123"
         
         oauth_params = {
@@ -470,7 +470,7 @@ class TestOAuthEnvironmentValidation:
             "DISCORD_CLIENT_ID": "123456789012345678",
             "DISCORD_CLIENT_SECRET": "mock_client_secret_abc123",
             "JWT_SECRET_KEY": "mock_jwt_secret_xyz789",
-            "OAUTH_REDIRECT_URI": "https://arccorp-web.redlegion.org/auth/callback"
+            "OAUTH_REDIRECT_URI": "https://dev.redlegion.gg/auth/callback"
         }
         
         with patch.dict(os.environ, test_env):
@@ -482,7 +482,7 @@ class TestOAuthEnvironmentValidation:
             assert client_id == "123456789012345678"
             assert client_secret == "mock_client_secret_abc123"
             assert jwt_secret == "mock_jwt_secret_xyz789"
-            assert "arccorp-web.redlegion.org" in redirect_uri
+            assert "dev.redlegion.gg" in redirect_uri
             
             # Validate configurations
             assert len(client_id) >= 17  # Discord client IDs are at least 17 digits

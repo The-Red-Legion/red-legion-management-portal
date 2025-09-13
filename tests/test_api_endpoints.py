@@ -87,7 +87,7 @@ class TestPublicEndpoints:
     async def test_public_endpoints_no_auth_required(self):
         """Test public endpoints don't require authentication."""
         
-        async with httpx.AsyncClient(base_url="https://arccorp-web.redlegion.org") as client:
+        async with httpx.AsyncClient(base_url="https://dev.redlegion.gg") as client:
             # Mock responses for public endpoints
             with patch.object(client, 'get') as mock_get:
                 mock_response = Mock()
@@ -638,14 +638,14 @@ class TestAPISecurityHeaders:
                 mock_response = Mock()
                 mock_response.status_code = 200
                 mock_response.headers = {
-                    "Access-Control-Allow-Origin": "https://arccorp-web.redlegion.org",
+                    "Access-Control-Allow-Origin": "https://dev.redlegion.gg",
                     "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
                     "Access-Control-Allow-Headers": "Authorization, Content-Type",
                     "Access-Control-Max-Age": "86400"
                 }
                 mock_options.return_value = mock_response
                 
-                headers = {"Origin": "https://arccorp-web.redlegion.org"}
+                headers = {"Origin": "https://dev.redlegion.gg"}
                 response = await client.options("/api/users", headers=headers)
                 
                 assert response.status_code == 200

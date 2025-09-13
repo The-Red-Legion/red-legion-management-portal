@@ -43,7 +43,7 @@ jobs:
         DISCORD_CLIENT_ID: ${{ secrets.DISCORD_CLIENT_ID }}
         DISCORD_CLIENT_SECRET: ${{ secrets.DISCORD_CLIENT_SECRET }}
         BOT_API_URL: ${{ vars.BOT_API_URL || 'http://34.56.38.104:8001' }}
-        WEBSERVER_URL: ${{ vars.WEBSERVER_URL || 'https://arccorp-web.redlegion.org' }}
+        WEBSERVER_URL: ${{ vars.WEBSERVER_URL || 'https://dev.redlegion.gg' }}
         GOOGLE_CLOUD_PROJECT: rl-prod-471116
       run: python tests/infrastructure_health_check.py
 
@@ -146,7 +146,7 @@ jobs:
         DISCORD_CLIENT_ID: ${{ secrets.DISCORD_CLIENT_ID }}
         DISCORD_CLIENT_SECRET: ${{ secrets.DISCORD_CLIENT_SECRET }}
         JWT_SECRET_KEY: ${{ secrets.JWT_SECRET_KEY }}
-        OAUTH_REDIRECT_URI: "https://arccorp-web.redlegion.org/auth/callback"
+        OAUTH_REDIRECT_URI: "https://dev.redlegion.gg/auth/callback"
         GOOGLE_CLOUD_PROJECT: rl-prod-471116
       run: |
         python -m pytest tests/test_oauth_integration.py -v --tb=short
@@ -241,7 +241,7 @@ jobs:
     
     - name: Run E2E Tests
       env:
-        BASE_URL: "https://arccorp-web.redlegion.org"
+        BASE_URL: "https://dev.redlegion.gg"
         HEADLESS: "true"
         SLOWMO: "0"
         TIMEOUT: "30000"

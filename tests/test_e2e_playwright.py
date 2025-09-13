@@ -48,7 +48,7 @@ class TestE2EAuthFlow:
         """Test homepage loads correctly."""
         
         # Navigate to homepage
-        await page.goto("https://arccorp-web.redlegion.org")
+        await page.goto("https://dev.redlegion.gg")
         
         # Wait for page to load
         await page.wait_for_load_state('networkidle')
@@ -73,7 +73,7 @@ class TestE2EAuthFlow:
         """Test login flow initiation and Discord redirect."""
         
         # Navigate to homepage
-        await page.goto("https://arccorp-web.redlegion.org")
+        await page.goto("https://dev.redlegion.gg")
         await page.wait_for_load_state('networkidle')
         
         # Click login button
@@ -95,9 +95,9 @@ class TestE2EAuthFlow:
         """Test protected pages redirect unauthenticated users to login."""
         
         protected_pages = [
-            "https://arccorp-web.redlegion.org/dashboard",
-            "https://arccorp-web.redlegion.org/events",
-            "https://arccorp-web.redlegion.org/admin"
+            "https://dev.redlegion.gg/dashboard",
+            "https://dev.redlegion.gg/events",
+            "https://dev.redlegion.gg/admin"
         ]
         
         for protected_url in protected_pages:
@@ -120,13 +120,13 @@ class TestE2EDashboard:
     async def authenticated_page(self, page):
         """Set up authenticated session for testing."""
         # Mock authentication by setting session cookie
-        await page.goto("https://arccorp-web.redlegion.org")
+        await page.goto("https://dev.redlegion.gg")
         
         # Set mock authentication cookie (for testing only)
         await page.context.add_cookies([{
             'name': 'session_token',
             'value': 'mock_jwt_token_for_testing',
-            'domain': 'arccorp-web.redlegion.org',
+            'domain': 'dev.redlegion.gg',
             'path': '/',
             'httpOnly': True,
             'secure': True
@@ -139,7 +139,7 @@ class TestE2EDashboard:
         """Test dashboard loads correctly for authenticated users."""
         
         # Navigate to dashboard
-        await authenticated_page.goto("https://arccorp-web.redlegion.org/dashboard")
+        await authenticated_page.goto("https://dev.redlegion.gg/dashboard")
         await authenticated_page.wait_for_load_state('networkidle')
         
         # Check for dashboard elements
@@ -161,7 +161,7 @@ class TestE2EDashboard:
     async def test_navigation_menu_functionality(self, authenticated_page):
         """Test main navigation menu works correctly."""
         
-        await authenticated_page.goto("https://arccorp-web.redlegion.org/dashboard")
+        await authenticated_page.goto("https://dev.redlegion.gg/dashboard")
         await authenticated_page.wait_for_load_state('networkidle')
         
         # Test navigation links
@@ -180,7 +180,7 @@ class TestE2EDashboard:
                 await authenticated_page.wait_for_load_state('networkidle')
                 
                 # Go back to dashboard for next test
-                await authenticated_page.goto("https://arccorp-web.redlegion.org/dashboard")
+                await authenticated_page.goto("https://dev.redlegion.gg/dashboard")
                 await authenticated_page.wait_for_load_state('networkidle')
                 
             except:
@@ -194,13 +194,13 @@ class TestE2EEventManagement:
     @pytest.fixture
     async def admin_page(self, page):
         """Set up admin session for testing."""
-        await page.goto("https://arccorp-web.redlegion.org")
+        await page.goto("https://dev.redlegion.gg")
         
         # Set mock admin authentication cookie
         await page.context.add_cookies([{
             'name': 'session_token', 
             'value': 'mock_admin_jwt_token_for_testing',
-            'domain': 'arccorp-web.redlegion.org',
+            'domain': 'dev.redlegion.gg',
             'path': '/',
             'httpOnly': True,
             'secure': True
@@ -213,7 +213,7 @@ class TestE2EEventManagement:
         """Test complete event creation workflow."""
         
         # Navigate to events page
-        await admin_page.goto("https://arccorp-web.redlegion.org/events")
+        await admin_page.goto("https://dev.redlegion.gg/events")
         await admin_page.wait_for_load_state('networkidle')
         
         try:
@@ -260,7 +260,7 @@ class TestE2EEventManagement:
     async def test_event_list_display(self, admin_page):
         """Test event list displays correctly."""
         
-        await admin_page.goto("https://arccorp-web.redlegion.org/events")
+        await admin_page.goto("https://dev.redlegion.gg/events")
         await admin_page.wait_for_load_state('networkidle')
         
         # Check for events list elements
@@ -294,7 +294,7 @@ class TestE2EMiningInterface:
     async def test_mining_page_loads(self, page):
         """Test mining page loads and displays commodity information."""
         
-        await page.goto("https://arccorp-web.redlegion.org/mining")
+        await page.goto("https://dev.redlegion.gg/mining")
         await page.wait_for_load_state('networkidle')
         
         try:
@@ -326,7 +326,7 @@ class TestE2EMiningInterface:
     async def test_commodity_price_display(self, page):
         """Test commodity price information displays correctly."""
         
-        await page.goto("https://arccorp-web.redlegion.org/mining")
+        await page.goto("https://dev.redlegion.gg/mining")
         await page.wait_for_load_state('networkidle')
         
         try:
@@ -364,7 +364,7 @@ class TestE2EResponsiveDesign:
         # Set large desktop viewport
         await page.set_viewport_size({'width': 1920, 'height': 1080})
         
-        await page.goto("https://arccorp-web.redlegion.org")
+        await page.goto("https://dev.redlegion.gg")
         await page.wait_for_load_state('networkidle')
         
         # Check layout elements are visible
@@ -394,7 +394,7 @@ class TestE2EResponsiveDesign:
         # Set medium desktop viewport
         await page.set_viewport_size({'width': 1366, 'height': 768})
         
-        await page.goto("https://arccorp-web.redlegion.org")
+        await page.goto("https://dev.redlegion.gg")
         await page.wait_for_load_state('networkidle')
         
         # Verify content is still accessible
@@ -423,7 +423,7 @@ class TestE2EResponsiveDesign:
         # Set small desktop viewport (but still desktop, not mobile)
         await page.set_viewport_size({'width': 1024, 'height': 768})
         
-        await page.goto("https://arccorp-web.redlegion.org") 
+        await page.goto("https://dev.redlegion.gg") 
         await page.wait_for_load_state('networkidle')
         
         # Check mobile menu might appear
@@ -459,7 +459,7 @@ class TestE2EPerformance:
         # Start timing
         start_time = datetime.now()
         
-        await page.goto("https://arccorp-web.redlegion.org")
+        await page.goto("https://dev.redlegion.gg")
         await page.wait_for_load_state('networkidle')
         
         # End timing
@@ -473,7 +473,7 @@ class TestE2EPerformance:
     async def test_api_response_times(self, page):
         """Test API response times are reasonable."""
         
-        await page.goto("https://arccorp-web.redlegion.org")
+        await page.goto("https://dev.redlegion.gg")
         
         # Monitor network requests
         api_requests = []
@@ -489,7 +489,7 @@ class TestE2EPerformance:
         page.on('response', handle_response)
         
         # Navigate to a page that makes API calls
-        await page.goto("https://arccorp-web.redlegion.org/dashboard")
+        await page.goto("https://dev.redlegion.gg/dashboard")
         await page.wait_for_load_state('networkidle')
         
         # Check API response times
@@ -508,7 +508,7 @@ class TestE2EErrorHandling:
         """Test 404 error page displays correctly."""
         
         # Try to access non-existent page
-        await page.goto("https://arccorp-web.redlegion.org/nonexistent-page-12345")
+        await page.goto("https://dev.redlegion.gg/nonexistent-page-12345")
         await page.wait_for_load_state('networkidle')
         
         # Should show 404 page or redirect to home
@@ -520,8 +520,8 @@ class TestE2EErrorHandling:
             '404' in page_content or 
             'Not Found' in page_content or
             'Page not found' in page_content or
-            current_url == "https://arccorp-web.redlegion.org/" or
-            'arccorp-web.redlegion.org' in current_url
+            current_url == "https://dev.redlegion.gg/" or
+            'dev.redlegion.gg' in current_url
         )
         
         assert is_404_handled, "404 page not handled properly"
@@ -533,7 +533,7 @@ class TestE2EErrorHandling:
         js_errors = []
         page.on('pageerror', lambda error: js_errors.append(error))
         
-        await page.goto("https://arccorp-web.redlegion.org")
+        await page.goto("https://dev.redlegion.gg")
         await page.wait_for_load_state('networkidle')
         
         # Navigate through several pages to test for JS errors
@@ -546,7 +546,7 @@ class TestE2EErrorHandling:
         
         for test_page in test_pages:
             try:
-                await page.goto(f"https://arccorp-web.redlegion.org{test_page}")
+                await page.goto(f"https://dev.redlegion.gg{test_page}")
                 await page.wait_for_load_state('networkidle')
                 await page.wait_for_timeout(1000)  # Give time for JS to execute
             except:

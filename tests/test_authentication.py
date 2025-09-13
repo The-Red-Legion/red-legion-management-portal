@@ -42,7 +42,7 @@ class TestDiscordOAuth:
         
         # Mock OAuth parameters
         client_id = "123456789"
-        redirect_uri = "https://arccorp-web.redlegion.org/auth/callback"
+        redirect_uri = "https://dev.redlegion.gg/auth/callback"
         scopes = ["identify", "guilds"]
         
         # Generate OAuth URL

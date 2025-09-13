@@ -176,7 +176,14 @@ async def check_user_guild_roles(access_token: str) -> tuple[bool, list]:
         return False, []
 
 # CORS configuration - environment aware
-cors_origins = ["http://localhost:5173", "http://127.0.0.1:5173", "http://localhost:5174", "http://127.0.0.1:5174"]
+cors_origins = [
+    "http://localhost:5173", 
+    "http://127.0.0.1:5173", 
+    "http://localhost:5174", 
+    "http://127.0.0.1:5174",
+    "https://dev.redlegion.gg",
+    "http://dev.redlegion.gg"
+]
 if FRONTEND_URL and FRONTEND_URL not in cors_origins:
     cors_origins.append(FRONTEND_URL)
 
