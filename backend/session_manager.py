@@ -54,8 +54,14 @@ class SessionManager:
     def _start_cleanup_task(self):
         """Start background task for session cleanup."""
         try:
-            if self._cleanup_task is None:
-                self._cleanup_task = asyncio.create_task(self._periodic_cleanup())
+            # Only start cleanup task if event loop is running
+            try:
+                loop = asyncio.get_running_loop()
+                if self._cleanup_task is None:
+                    self._cleanup_task = asyncio.create_task(self._periodic_cleanup())
+            except RuntimeError:
+                # No event loop running - will start during first session operation
+                logger.info("No event loop running - cleanup task will start later")
         except Exception as e:
             logger.warning(f"Could not start cleanup task: {e}")
             # Don't fail initialization if cleanup task can't start
@@ -92,6 +98,15 @@ class SessionManager:
         fingerprint_data = "|".join(components)
         return hashlib.sha256(fingerprint_data.encode()).hexdigest()[:16]
 
+    async def _ensure_cleanup_task_started(self):
+        """Ensure cleanup task is running."""
+        if self._cleanup_task is None:
+            try:
+                self._cleanup_task = asyncio.create_task(self._periodic_cleanup())
+                logger.info("Started session cleanup background task")
+            except Exception as e:
+                logger.warning(f"Could not start cleanup task: {e}")
+
     async def create_session(
         self,
         user_id: str,
@@ -101,6 +116,9 @@ class SessionManager:
         request: Request
     ) -> Tuple[str, SessionData]:
         """Create a new secure session."""
+
+        # Ensure cleanup task is running
+        await self._ensure_cleanup_task_started()
 
         # Check concurrent session limit
         await self._enforce_session_limits(user_id)
