@@ -79,10 +79,17 @@ async def discord_login():
 async def discord_callback(code: str = None, state: str = None, error: str = None):
     """Handle Discord OAuth callback."""
 
+    print(f"=== OAuth Callback Debug ===")
+    print(f"Code: {'✓' if code else '✗'}")
+    print(f"State: {state}")
+    print(f"Error: {error}")
+
     if error:
+        print(f"OAuth error: {error}")
         return RedirectResponse(f"{FRONTEND_URL}?error={error}")
 
     if not code:
+        print("No authorization code received")
         return RedirectResponse(f"{FRONTEND_URL}?error=no_code")
 
     # Exchange code for access token
@@ -136,9 +143,14 @@ async def discord_callback(code: str = None, state: str = None, error: str = Non
                 "created_at": datetime.now(timezone.utc).isoformat()
             }
 
+            print(f"✓ Session created for user {username} ({user_id})")
+            print(f"✓ Session token: {session_token[:8]}...")
+            print(f"✓ Total sessions: {len(user_sessions)}")
+
             # Redirect to frontend with session token
             response = RedirectResponse(f"{FRONTEND_URL}?token={session_token}")
             response.set_cookie("session_token", session_token, httponly=True, max_age=86400)  # 24 hours
+            print(f"✓ Redirecting to: {FRONTEND_URL}?token={session_token[:8]}...")
             return response
 
     except Exception as e:
@@ -151,10 +163,18 @@ async def get_user(request: Request):
     # Get session token from cookie or query param
     session_token = request.cookies.get("session_token") or request.query_params.get("token")
 
+    print(f"=== Auth Check Debug ===")
+    print(f"Cookie token: {'✓' if request.cookies.get('session_token') else '✗'}")
+    print(f"Query token: {'✓' if request.query_params.get('token') else '✗'}")
+    print(f"Session token: {session_token[:8] + '...' if session_token else 'None'}")
+    print(f"Active sessions: {len(user_sessions)}")
+
     if not session_token or session_token not in user_sessions:
+        print(f"❌ Authentication failed - token not found or invalid")
         raise HTTPException(status_code=401, detail="Not authenticated")
 
     session = user_sessions[session_token]
+    print(f"✓ User authenticated: {session['username']}")
     return {
         "user_id": session["user_id"],
         "username": session["username"],
