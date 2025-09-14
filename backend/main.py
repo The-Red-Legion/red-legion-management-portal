@@ -6,7 +6,7 @@ Simple web interface for Discord bot payroll system
 from fastapi import FastAPI, HTTPException, Depends, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse, Response
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, validator
 import os
 import sys
 import asyncpg
@@ -36,6 +36,12 @@ from services.discord_integration import (
 
 # Discord API client
 from services.discord_api import sync_discord_channels_to_db
+from validation import (
+    validate_discord_id, validate_event_id, validate_text_input,
+    validate_positive_integer, validate_decimal_amount,
+    EventCreateRequest, PayrollCalculateRequest, ChannelAddRequest,
+    validate_pagination_params, log_validation_attempt
+)
 
 # Load environment variables
 load_dotenv()
@@ -246,23 +252,62 @@ app.add_middleware(
 
 # Pydantic models
 class PayrollCalculationRequest(BaseModel):
-    ore_quantities: Dict[str, float]
-    custom_prices: Optional[Dict[str, float]] = None
-    donating_users: Optional[List[str]] = None
+    ore_quantities: Dict[str, float] = Field(..., description="Ore type to SCU quantity mapping")
+    custom_prices: Optional[Dict[str, float]] = Field(None, description="Custom price overrides")
+    donating_users: Optional[List[str]] = Field(None, description="Users donating to guild")
+
+    @validator('ore_quantities')
+    def validate_ore_quantities(cls, v):
+        if not isinstance(v, dict):
+            raise ValueError("Ore quantities must be a dictionary")
+
+        for ore_type, quantity in v.items():
+            if not isinstance(ore_type, str) or len(ore_type) < 2 or len(ore_type) > 50:
+                raise ValueError(f"Invalid ore type: {ore_type}")
+
+            if not isinstance(quantity, (int, float)) or quantity < 0 or quantity > 10000:
+                raise ValueError(f"Invalid quantity for {ore_type}: must be 0-10000")
+
+        return v
+
+    @validator('donating_users')
+    def validate_donating_users(cls, v):
+        if v is not None:
+            for user_id in v:
+                if not isinstance(user_id, str) or not user_id.isdigit() or len(user_id) < 17 or len(user_id) > 19:
+                    raise ValueError(f"Invalid Discord user ID: {user_id}")
+        return v
 
 class EventCreationRequest(BaseModel):
-    event_name: str
-    organizer_name: str
-    organizer_id: Optional[str] = None
-    guild_id: Optional[str] = "814699481912049704"  # Red Legion Discord server ID
-    event_type: str = "mining"
-    location_notes: Optional[str] = None
-    session_notes: Optional[str] = None
-    # Event scheduling fields
-    scheduled_start_time: Optional[datetime] = None
-    auto_start_enabled: bool = False
-    tracked_channels: Optional[List[Dict[str, Any]]] = None  # [{"id": 123, "name": "Mining Alpha"}]
-    primary_channel_id: Optional[int] = None
+    event_name: str = Field(..., min_length=3, max_length=100, description="Event name")
+    organizer_name: str = Field(..., min_length=2, max_length=50, description="Organizer name")
+    organizer_id: Optional[str] = Field(None, regex=r'^\d{17,19}$', description="Discord organizer ID")
+    guild_id: Optional[str] = Field("814699481912049704", regex=r'^\d{17,19}$', description="Discord guild ID")
+    event_type: str = Field("mining", regex=r'^(mining|salvage|combat|training)$', description="Event type")
+    location_notes: Optional[str] = Field(None, max_length=500, description="Location notes")
+    session_notes: Optional[str] = Field(None, max_length=1000, description="Session notes")
+    scheduled_start_time: Optional[datetime] = Field(None, description="Scheduled start time")
+    auto_start_enabled: bool = Field(False, description="Auto-start enabled")
+    tracked_channels: Optional[List[Dict[str, Any]]] = Field(None, description="Tracked Discord channels")
+    primary_channel_id: Optional[int] = Field(None, ge=100000000000000000, le=999999999999999999, description="Primary Discord channel ID")
+
+    @validator('tracked_channels')
+    def validate_tracked_channels(cls, v):
+        if v is not None:
+            if len(v) > 20:
+                raise ValueError("Too many tracked channels (max 20)")
+
+            for channel in v:
+                if not isinstance(channel, dict):
+                    raise ValueError("Each tracked channel must be a dictionary")
+
+                if 'id' not in channel or not isinstance(channel['id'], int):
+                    raise ValueError("Each channel must have a valid 'id' field")
+
+                if channel['id'] < 100000000000000000 or channel['id'] > 999999999999999999:
+                    raise ValueError(f"Invalid Discord channel ID: {channel['id']}")
+
+        return v
 
 # Database connection pool
 db_pool = None
@@ -420,6 +465,13 @@ async def discord_login():
 @app.get("/auth/discord/callback")
 async def discord_callback(code: str, state: str = None):
     """Handle Discord OAuth callback."""
+    # Validate OAuth parameters
+    if not code or len(code) > 200:  # Discord auth codes are typically shorter
+        raise HTTPException(status_code=400, detail="Invalid authorization code")
+
+    if state:
+        validate_text_input(state, "OAuth state", min_length=10, max_length=100)
+
     try:
         # Validate CSRF state token
         if not state or state not in oauth_states:
@@ -584,6 +636,10 @@ async def get_events(current_user: UserSession = Depends(get_current_user)):
 @app.get("/discord/channels")
 async def get_discord_channels(guild_id: str = "814699481912049704", current_user: UserSession = Depends(get_current_user)):
     """Get all available Discord voice channels for the guild."""
+    # Validate guild ID format
+    guild_id = validate_discord_id(guild_id, "Guild ID")
+    log_validation_attempt("get_discord_channels", current_user.user_id, {"guild_id": guild_id})
+
     try:
         pool = await get_db_pool()
         if pool is None:
@@ -888,6 +944,10 @@ async def cleanup_fake_discord_channels(current_user: UserSession = Depends(get_
 @app.get("/events/{event_id}/participants")
 async def get_event_participants(event_id: str, current_user: UserSession = Depends(get_current_user)):
     """Get participants for a specific event with real-time duration for live events."""
+    # Validate event ID format
+    event_id = validate_event_id(event_id)
+    log_validation_attempt("get_event_participants", current_user.user_id, {"event_id": event_id})
+
     try:
         pool = await get_db_pool()
         if pool is None:
