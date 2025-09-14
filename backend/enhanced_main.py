@@ -374,7 +374,7 @@ async def get_events(request: Request, current_user: dict = Depends(get_current_
         return []
 
 @app.get("/events/scheduled")
-async def get_scheduled_events(request: Request, current_user: dict = Depends(get_current_user_simple)):
+async def get_scheduled_events(request: Request, current_user: dict = Depends(get_current_user)):
     """Get all scheduled events (event_status = 'scheduled')."""
     try:
         pool = await get_db_pool()
