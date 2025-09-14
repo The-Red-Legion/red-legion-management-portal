@@ -16,6 +16,7 @@ from typing import List, Dict, Optional, Any
 import logging
 import random
 import string
+import secrets
 from datetime import datetime, timedelta, timezone
 import io
 import json
@@ -65,6 +66,9 @@ ADMIN_ROLE_ID = "814699701861220412"
 DEVELOPER_TEAM_ROLE_ID = "1412561382834180137"
 ORG_LEADERS_ROLE_ID = "1130629722070585396"
 ALLOWED_ROLE_IDS = {ADMIN_ROLE_ID, DEVELOPER_TEAM_ROLE_ID, ORG_LEADERS_ROLE_ID}
+
+# OAuth state storage (in production, use Redis or database)
+oauth_states = {}
 
 async def check_user_guild_roles(access_token: str) -> tuple[bool, list]:
     """Check if user has required roles in Red Legion guild."""
@@ -349,27 +353,50 @@ async def discord_login():
         raise HTTPException(status_code=500, detail="Discord OAuth not configured: Missing DISCORD_CLIENT_ID")
     if not DISCORD_REDIRECT_URI:
         raise HTTPException(status_code=500, detail="Discord OAuth not configured: Missing DISCORD_REDIRECT_URI")
-    
+
+    # Generate CSRF state token
+    state = secrets.token_urlsafe(32)
+    oauth_states[state] = {
+        'created_at': datetime.now(timezone.utc),
+        'expires_at': datetime.now(timezone.utc) + timedelta(minutes=10)
+    }
+
     discord_auth_url = (
         f"https://discord.com/api/oauth2/authorize"
         f"?client_id={DISCORD_CLIENT_ID}"
         f"&redirect_uri={DISCORD_REDIRECT_URI}"
         f"&response_type=code"
         f"&scope=identify%20guilds"
+        f"&state={state}"
     )
-    
+
     logger.info(f"Discord OAuth redirect URL: {discord_auth_url}")
     return RedirectResponse(discord_auth_url)
 
 @app.get("/auth/discord/callback")
-async def discord_callback(code: str):
+async def discord_callback(code: str, state: str = None):
     """Handle Discord OAuth callback."""
     try:
+        # Validate CSRF state token
+        if not state or state not in oauth_states:
+            logger.error("Invalid or missing OAuth state parameter")
+            raise HTTPException(status_code=400, detail="Invalid OAuth state")
+
+        # Check if state has expired
+        state_data = oauth_states[state]
+        if datetime.now(timezone.utc) > state_data['expires_at']:
+            del oauth_states[state]
+            logger.error("OAuth state has expired")
+            raise HTTPException(status_code=400, detail="OAuth state expired")
+
+        # Remove used state
+        del oauth_states[state]
+
         # Validate Discord OAuth configuration
         if not DISCORD_CLIENT_SECRET:
             raise HTTPException(status_code=500, detail="Discord OAuth not configured: Missing DISCORD_CLIENT_SECRET")
-            
-        logger.info(f"Discord OAuth callback received with code: {code[:10]}...")
+
+        logger.info(f"Discord OAuth callback received with code: {code[:10]}... and valid state")
         
         # Exchange code for access token
         async with httpx.AsyncClient() as client:
@@ -421,8 +448,8 @@ async def discord_callback(code: str):
         
         logger.info(f"Created session for user {user_data['username']} with roles: {roles}")
         
-        # Create response with secure cookie
-        response = RedirectResponse(f"{FRONTEND_URL}/")
+        # Create response with secure cookie and redirect to events page
+        response = RedirectResponse(f"{FRONTEND_URL}/events")
         response.set_cookie(
             key="session_token",
             value=session_token,
