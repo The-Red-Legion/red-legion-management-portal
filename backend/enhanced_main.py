@@ -10,7 +10,7 @@ from fastapi.responses import RedirectResponse, JSONResponse
 import httpx
 import os
 import uvicorn
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 import secrets
 import json
 import asyncpg
@@ -371,6 +371,40 @@ async def get_events(request: Request, current_user: dict = Depends(get_current_
     except Exception as e:
         logger.error(f"Error fetching events: {e}")
         # Return dummy data on database errors
+        return []
+
+@app.get("/events/scheduled")
+async def get_scheduled_events(request: Request, current_user: dict = Depends(get_current_user_simple)):
+    """Get all scheduled events (event_status = 'scheduled')."""
+    try:
+        pool = await get_db_pool()
+        if pool is None:
+            logger.warning("No database connection - returning dummy scheduled events data")
+            return [
+                {
+                    "event_id": "sch-demo01",
+                    "event_name": "Sunday Mining Session",
+                    "event_type": "mining",
+                    "scheduled_start_time": (datetime.now(timezone.utc) + timedelta(days=1)).isoformat(),
+                    "organizer_name": "Red Legion Admin",
+                    "event_status": "scheduled",
+                    "auto_start_enabled": True
+                }
+            ]
+
+        async with pool.acquire() as conn:
+            events = await conn.fetch("""
+                SELECT event_id, event_name, event_type, organizer_name,
+                       scheduled_start_time, auto_start_enabled, event_status,
+                       tracked_channels, primary_channel_id, created_at
+                FROM events
+                WHERE event_status = 'scheduled'
+                ORDER BY scheduled_start_time ASC
+            """)
+            return [dict(event) for event in events]
+
+    except Exception as e:
+        logger.error(f"Error fetching scheduled events: {e}")
         return []
 
 @app.get("/discord/channels")
