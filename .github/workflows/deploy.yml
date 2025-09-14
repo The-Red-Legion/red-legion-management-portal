@@ -106,7 +106,45 @@ jobs:
           # Fix permissions
           sudo chown ubuntu:ubuntu /opt/red-legion-website/.env
           sudo chmod 640 /opt/red-legion-website/.env
-          
+
+          # Create systemd service file
+          sudo tee /etc/systemd/system/red-legion-website-backend.service > /dev/null <<'SERVICE_EOF'
+        [Unit]
+        Description=Red Legion Website Backend
+        After=network.target
+        Wants=network.target
+
+        [Service]
+        Type=simple
+        User=ubuntu
+        Group=ubuntu
+        WorkingDirectory=/opt/red-legion-website/backend
+        Environment=PATH=/opt/red-legion-website/venv/bin
+        Environment=PYTHONPATH=/opt/red-legion-website/backend
+        EnvironmentFile=-/opt/red-legion-website/.env
+        ExecStartPre=/bin/bash -c 'cd /opt/red-legion-website/backend && /opt/red-legion-website/venv/bin/python startup_check.py'
+        ExecStart=/opt/red-legion-website/venv/bin/python main.py
+        ExecReload=/bin/kill -HUP \$MAINPID
+        StandardOutput=journal
+        StandardError=journal
+        SyslogIdentifier=red-legion-backend
+        KillMode=mixed
+        TimeoutStopSec=5
+        Restart=always
+        RestartSec=10
+
+        [Install]
+        WantedBy=multi-user.target
+        SERVICE_EOF
+
+          # Set proper permissions for backend files
+          sudo chown -R ubuntu:ubuntu /opt/red-legion-website
+          sudo chmod +x /opt/red-legion-website/backend/startup_check.py
+          sudo chmod +x /opt/red-legion-website/backend/main.py
+
+          # Reload systemd and configure service
+          sudo systemctl daemon-reload
+
           # Configure nginx with proper settings
           sudo tee /etc/nginx/sites-available/default > /dev/null <<'NGINX_EOF'
         server {
@@ -202,13 +240,26 @@ jobs:
           sudo nginx -t
           sudo systemctl reload nginx
           
-          # Start the service
-          sudo systemctl start red-legion-website-backend
+          # Stop existing service if running
+          sudo systemctl stop red-legion-website-backend || true
+
+          # Start and enable the service
           sudo systemctl enable red-legion-website-backend
-          
-          # Wait for service to start and check status
-          sleep 5
-          sudo systemctl status red-legion-website-backend
+          sudo systemctl start red-legion-website-backend
+
+          # Wait for service to start and check status with detailed output
+          sleep 8
+          echo '=== Service Status ==='
+          sudo systemctl status red-legion-website-backend --no-pager -l
+
+          echo '=== Service Logs ==='
+          sudo journalctl -u red-legion-website-backend --no-pager -l --since='5 minutes ago'
+
+          echo '=== Testing Backend Connectivity ==='
+          curl -f http://127.0.0.1:8000/ping || echo 'Backend not responding on localhost'
+
+          echo '=== Port Check ==='
+          sudo netstat -tlnp | grep :8000 || echo 'Port 8000 not listening'
         "
 
     - name: Verify deployment
