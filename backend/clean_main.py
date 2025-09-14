@@ -79,7 +79,10 @@ async def discord_login():
 async def discord_callback(code: str = None, state: str = None, error: str = None):
     """Handle Discord OAuth callback."""
 
-    print(f"=== OAuth Callback Debug ===")
+    global callback_attempts
+    callback_attempts += 1
+
+    print(f"=== OAuth Callback Debug (Attempt #{callback_attempts}) ===")
     print(f"Code: {'✓' if code else '✗'}")
     print(f"State: {state}")
     print(f"Error: {error}")
@@ -207,6 +210,20 @@ async def debug_sessions():
             }
             for token, data in user_sessions.items()
         ]
+    }
+
+# Debug counter to see if callback is being hit
+callback_attempts = 0
+
+@app.get("/debug/callback-test")
+async def callback_test():
+    """Test if callback URL is reachable."""
+    global callback_attempts
+    callback_attempts += 1
+    return {
+        "message": "Callback test endpoint reached",
+        "attempts": callback_attempts,
+        "timestamp": datetime.now(timezone.utc).isoformat()
     }
 
 if __name__ == "__main__":
