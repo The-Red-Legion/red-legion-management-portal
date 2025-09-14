@@ -14,9 +14,16 @@ const api = axios.create({
   }
 })
 
-// Request interceptor for debugging
+// Request interceptor for debugging and adding session token
 api.interceptors.request.use(
   config => {
+    // Add session token from localStorage if available
+    const sessionToken = localStorage.getItem('session_token')
+    if (sessionToken) {
+      config.params = config.params || {}
+      config.params.token = sessionToken
+    }
+
     console.log('API Request:', config.method?.toUpperCase(), config.url, config.data)
     return config
   },

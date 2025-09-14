@@ -87,7 +87,21 @@ export default {
 
     onMounted(async () => {
       console.log('🚀 App mounted, checking authentication...')
-      
+
+      // Check if there's a token in the URL (from OAuth callback)
+      const urlParams = new URLSearchParams(window.location.search)
+      const token = urlParams.get('token')
+
+      if (token) {
+        console.log('🔗 Token found in URL, storing as session token')
+        // Store token in localStorage for API requests
+        localStorage.setItem('session_token', token)
+        // Clean up URL by removing token parameter
+        const newUrl = new URL(window.location)
+        newUrl.searchParams.delete('token')
+        window.history.replaceState({}, document.title, newUrl.pathname + newUrl.search)
+      }
+
       try {
         // Check if user is authenticated by calling the backend
         const response = await apiService.getCurrentUser()
@@ -99,6 +113,7 @@ export default {
         console.log('❌ User not authenticated:', error.response?.status)
         // Clear any stale localStorage data
         localStorage.removeItem('red_legion_user')
+        localStorage.removeItem('session_token')
         user.value = null
       }
     })
