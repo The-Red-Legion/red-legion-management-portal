@@ -18,6 +18,7 @@ from typing import Optional, List, Dict, Any
 import logging
 from dotenv import load_dotenv
 from google.cloud import secretmanager
+import urllib.parse
 
 # Load environment variables
 load_dotenv()
@@ -79,13 +80,28 @@ async def get_db_pool():
     if db_pool is None:
         try:
             if DATABASE_URL:
-                db_pool = await asyncpg.create_pool(DATABASE_URL)
+                # Parse and decode the DATABASE_URL to handle URL-encoded special characters
+                parsed_url = urllib.parse.urlparse(DATABASE_URL)
+
+                # Decode password if it contains URL-encoded characters
+                decoded_password = urllib.parse.unquote(parsed_url.password) if parsed_url.password else None
+
+                # Reconstruct clean connection parameters
+                if decoded_password:
+                    # Build clean connection string
+                    clean_database_url = f"postgresql://{parsed_url.username}:{decoded_password}@{parsed_url.hostname}:{parsed_url.port}{parsed_url.path}"
+                    logger.info(f"Database connection with decoded password (password length: {len(decoded_password)})")
+                    db_pool = await asyncpg.create_pool(clean_database_url)
+                else:
+                    db_pool = await asyncpg.create_pool(DATABASE_URL)
+
                 logger.info("Database connection pool created successfully")
             else:
                 logger.warning("No DATABASE_URL configured - running without database")
                 return None
         except Exception as e:
             logger.error(f"Database connection failed: {e}")
+            logger.error(f"DATABASE_URL format: {DATABASE_URL[:50]}..." if DATABASE_URL else "No URL")
             return None
     return db_pool
 
