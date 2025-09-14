@@ -363,7 +363,7 @@ async def get_events(request: Request, current_user: dict = Depends(get_current_
                 SELECT
                     event_id, event_name, event_type, event_status,
                     start_time, end_time, participant_count, total_earnings
-                FROM mining_events
+                FROM events
                 ORDER BY start_time DESC
             """)
             return [dict(event) for event in events]
@@ -405,6 +405,41 @@ async def get_scheduled_events(request: Request, current_user: dict = Depends(ge
 
     except Exception as e:
         logger.error(f"Error fetching scheduled events: {e}")
+        return []
+
+@app.get("/admin/events")
+async def get_admin_events(request: Request, current_user: dict = Depends(get_current_user)):
+    """Get all events for admin management."""
+    try:
+        pool = await get_db_pool()
+        if pool is None:
+            logger.warning("No database connection - returning dummy admin events data")
+            return [
+                {
+                    "event_id": "admin-demo01",
+                    "event_name": "Demo Admin Event",
+                    "event_type": "mining",
+                    "organizer_name": "Admin User",
+                    "started_at": "2024-01-15T19:00:00Z",
+                    "ended_at": "2024-01-15T22:00:00Z",
+                    "status": "completed",
+                    "total_participants": 5,
+                    "payroll_calculated": True
+                }
+            ]
+
+        async with pool.acquire() as conn:
+            events = await conn.fetch("""
+                SELECT event_id, event_name, event_type, organizer_name,
+                       started_at, ended_at, status, total_participants,
+                       payroll_calculated, created_at
+                FROM events
+                ORDER BY created_at DESC
+            """)
+            return [dict(event) for event in events]
+
+    except Exception as e:
+        logger.error(f"Error fetching admin events: {e}")
         return []
 
 @app.get("/discord/channels")
