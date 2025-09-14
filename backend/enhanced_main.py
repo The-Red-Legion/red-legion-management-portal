@@ -364,7 +364,7 @@ async def get_events(request: Request, current_user: dict = Depends(get_current_
                     event_id, event_name, event_type, status as event_status,
                     started_at as start_time, ended_at as end_time,
                     total_participants as participant_count,
-                    COALESCE(total_earnings, 0) as total_earnings
+                    0 as total_earnings
                 FROM events
                 ORDER BY COALESCE(started_at, created_at) DESC
             """)
