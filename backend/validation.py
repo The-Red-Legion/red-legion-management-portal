@@ -5,7 +5,7 @@ Provides comprehensive validation for all user inputs to prevent security vulner
 
 import re
 from typing import Optional, List, Any, Union
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, field_validator
 from fastapi import HTTPException
 import logging
 
@@ -120,23 +120,23 @@ def validate_decimal_amount(value: Union[float, str], field_name: str, min_val: 
 class EventCreateRequest(BaseModel):
     """Validation for event creation requests."""
     event_name: str = Field(..., min_length=3, max_length=100)
-    event_type: str = Field(..., regex=r'^(mining|salvage|combat|training)$')
+    event_type: str = Field(..., pattern=r'^(mining|salvage|combat|training)$')
     system_location: str = Field(..., min_length=2, max_length=50)
     planet_moon: Optional[str] = Field(None, max_length=50)
     location_notes: Optional[str] = Field(None, max_length=200)
     selected_channels: List[str] = Field(..., min_items=1, max_items=10)
 
-    @validator('selected_channels')
+    @field_validator('selected_channels')
     def validate_channel_ids(cls, v):
         for channel_id in v:
             validate_discord_id(channel_id, "Channel ID")
         return v
 
-    @validator('event_name')
+    @field_validator('event_name')
     def validate_event_name(cls, v):
         return validate_text_input(v, "Event name", min_length=3, max_length=100)
 
-    @validator('system_location')
+    @field_validator('system_location')
     def validate_system_location(cls, v):
         return validate_text_input(v, "System location", min_length=2, max_length=50)
 
@@ -146,7 +146,7 @@ class PayrollCalculateRequest(BaseModel):
     donation_percentage: Optional[float] = Field(0, ge=0, le=100)
     custom_prices: Optional[dict] = Field({})
 
-    @validator('ore_quantities')
+    @field_validator('ore_quantities')
     def validate_ore_quantities(cls, v):
         if not isinstance(v, dict):
             raise ValueError("Ore quantities must be a dictionary")
@@ -162,11 +162,11 @@ class ChannelAddRequest(BaseModel):
     channel_id: str
     channel_name: str = Field(..., min_length=1, max_length=100)
 
-    @validator('channel_id')
+    @field_validator('channel_id')
     def validate_channel_id(cls, v):
         return validate_discord_id(v, "Channel ID")
 
-    @validator('channel_name')
+    @field_validator('channel_name')
     def validate_channel_name(cls, v):
         return validate_text_input(v, "Channel name", min_length=1, max_length=100)
 

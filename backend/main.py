@@ -6,7 +6,7 @@ Simple web interface for Discord bot payroll system
 from fastapi import FastAPI, HTTPException, Depends, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse, Response
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, field_validator
 import os
 import sys
 import asyncpg
@@ -265,7 +265,7 @@ class PayrollCalculationRequest(BaseModel):
     custom_prices: Optional[Dict[str, float]] = Field(None, description="Custom price overrides")
     donating_users: Optional[List[str]] = Field(None, description="Users donating to guild")
 
-    @validator('ore_quantities')
+    @field_validator('ore_quantities')
     def validate_ore_quantities(cls, v):
         if not isinstance(v, dict):
             raise ValueError("Ore quantities must be a dictionary")
@@ -279,7 +279,7 @@ class PayrollCalculationRequest(BaseModel):
 
         return v
 
-    @validator('donating_users')
+    @field_validator('donating_users')
     def validate_donating_users(cls, v):
         if v is not None:
             for user_id in v:
@@ -290,9 +290,9 @@ class PayrollCalculationRequest(BaseModel):
 class EventCreationRequest(BaseModel):
     event_name: str = Field(..., min_length=3, max_length=100, description="Event name")
     organizer_name: str = Field(..., min_length=2, max_length=50, description="Organizer name")
-    organizer_id: Optional[str] = Field(None, regex=r'^\d{17,19}$', description="Discord organizer ID")
-    guild_id: Optional[str] = Field("814699481912049704", regex=r'^\d{17,19}$', description="Discord guild ID")
-    event_type: str = Field("mining", regex=r'^(mining|salvage|combat|training)$', description="Event type")
+    organizer_id: Optional[str] = Field(None, pattern=r'^\d{17,19}$', description="Discord organizer ID")
+    guild_id: Optional[str] = Field("814699481912049704", pattern=r'^\d{17,19}$', description="Discord guild ID")
+    event_type: str = Field("mining", pattern=r'^(mining|salvage|combat|training)$', description="Event type")
     location_notes: Optional[str] = Field(None, max_length=500, description="Location notes")
     session_notes: Optional[str] = Field(None, max_length=1000, description="Session notes")
     scheduled_start_time: Optional[datetime] = Field(None, description="Scheduled start time")
@@ -300,7 +300,7 @@ class EventCreationRequest(BaseModel):
     tracked_channels: Optional[List[Dict[str, Any]]] = Field(None, description="Tracked Discord channels")
     primary_channel_id: Optional[int] = Field(None, ge=100000000000000000, le=999999999999999999, description="Primary Discord channel ID")
 
-    @validator('tracked_channels')
+    @field_validator('tracked_channels')
     def validate_tracked_channels(cls, v):
         if v is not None:
             if len(v) > 20:
