@@ -361,10 +361,12 @@ async def get_events(request: Request, current_user: dict = Depends(get_current_
         async with pool.acquire() as conn:
             events = await conn.fetch("""
                 SELECT
-                    event_id, event_name, event_type, event_status,
-                    start_time, end_time, participant_count, total_earnings
+                    event_id, event_name, event_type, status as event_status,
+                    started_at as start_time, ended_at as end_time,
+                    total_participants as participant_count,
+                    COALESCE(total_earnings, 0) as total_earnings
                 FROM events
-                ORDER BY start_time DESC
+                ORDER BY COALESCE(started_at, created_at) DESC
             """)
             return [dict(event) for event in events]
 
