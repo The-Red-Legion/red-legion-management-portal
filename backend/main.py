@@ -126,8 +126,17 @@ DEVELOPER_TEAM_ROLE_ID = "1412561382834180137"
 ORG_LEADERS_ROLE_ID = "1130629722070585396"
 ALLOWED_ROLE_IDS = {ADMIN_ROLE_ID, DEVELOPER_TEAM_ROLE_ID, ORG_LEADERS_ROLE_ID}
 
-# OAuth state storage (in production, use Redis or database)
-oauth_states = {}
+# Simple session storage (in production, use Redis or database)
+user_sessions = {}
+
+async def get_current_user_simple(request: Request) -> dict:
+    """Get current authenticated user from simple session."""
+    session_token = request.cookies.get("session_token") or request.query_params.get("token")
+
+    if not session_token or session_token not in user_sessions:
+        raise HTTPException(status_code=401, detail="Authentication required")
+
+    return user_sessions[session_token]
 
 async def check_user_guild_roles(access_token: str) -> tuple[bool, list]:
     """Check if user has required roles in Red Legion guild."""
@@ -431,67 +440,44 @@ async def root():
     """Root endpoint."""
     return {"message": "Red Legion Web Payroll API", "version": "1.0.0"}
 
-@app.get("/auth/login")
+@app.get("/auth/discord")
 async def discord_login():
-    """Redirect to Discord OAuth."""
-    # Check if Discord OAuth is properly configured
+    """Start Discord OAuth flow."""
     if not DISCORD_CLIENT_ID:
-        raise HTTPException(status_code=500, detail="Discord OAuth not configured: Missing DISCORD_CLIENT_ID")
-    if not DISCORD_REDIRECT_URI:
-        raise HTTPException(status_code=500, detail="Discord OAuth not configured: Missing DISCORD_REDIRECT_URI")
+        raise HTTPException(status_code=500, detail="Discord client ID not configured")
 
-    # Generate CSRF state token
+    # Generate state for CSRF protection
     state = secrets.token_urlsafe(32)
-    oauth_states[state] = {
-        'created_at': datetime.now(timezone.utc),
-        'expires_at': datetime.now(timezone.utc) + timedelta(minutes=10)
-    }
 
     discord_auth_url = (
         f"https://discord.com/api/oauth2/authorize"
         f"?client_id={DISCORD_CLIENT_ID}"
         f"&redirect_uri={DISCORD_REDIRECT_URI}"
         f"&response_type=code"
-        f"&scope=identify%20guilds"
+        f"&scope=identify"
         f"&state={state}"
     )
 
-    logger.info(f"Discord OAuth redirect URL: {discord_auth_url}")
     return RedirectResponse(discord_auth_url)
 
 @app.get("/auth/discord/callback")
-async def discord_callback(request: Request, code: str, state: str = None):
+async def discord_callback(code: str = None, state: str = None, error: str = None):
     """Handle Discord OAuth callback."""
-    # Validate OAuth parameters
-    if not code or len(code) > 200:  # Discord auth codes are typically shorter
-        raise HTTPException(status_code=400, detail="Invalid authorization code")
+    logger.info("=== OAuth Callback ===")
+    logger.info(f"Code: {'✓' if code else '✗'}")
+    logger.info(f"State: {state}")
+    logger.info(f"Error: {error}")
 
-    if state:
-        validate_text_input(state, "OAuth state", min_length=10, max_length=100)
+    if error:
+        logger.error(f"OAuth error: {error}")
+        return RedirectResponse(f"{FRONTEND_URL}?error={error}")
 
+    if not code:
+        logger.error("No authorization code received")
+        return RedirectResponse(f"{FRONTEND_URL}?error=no_code")
+
+    # Exchange code for access token
     try:
-        # Validate CSRF state token
-        if not state or state not in oauth_states:
-            logger.error("Invalid or missing OAuth state parameter")
-            raise HTTPException(status_code=400, detail="Invalid OAuth state")
-
-        # Check if state has expired
-        state_data = oauth_states[state]
-        if datetime.now(timezone.utc) > state_data['expires_at']:
-            del oauth_states[state]
-            logger.error("OAuth state has expired")
-            raise HTTPException(status_code=400, detail="OAuth state expired")
-
-        # Remove used state
-        del oauth_states[state]
-
-        # Validate Discord OAuth configuration
-        if not DISCORD_CLIENT_SECRET:
-            raise HTTPException(status_code=500, detail="Discord OAuth not configured: Missing DISCORD_CLIENT_SECRET")
-
-        logger.info(f"Discord OAuth callback received with code: {code[:10]}... and valid state")
-        
-        # Exchange code for access token
         async with httpx.AsyncClient() as client:
             token_response = await client.post(
                 "https://discord.com/api/oauth2/token",
@@ -504,81 +490,86 @@ async def discord_callback(request: Request, code: str, state: str = None):
                 },
                 headers={"Content-Type": "application/x-www-form-urlencoded"}
             )
-            
+
             if token_response.status_code != 200:
-                logger.error(f"Discord token exchange failed: {token_response.status_code} - {token_response.text}")
-                raise HTTPException(status_code=400, detail="Discord token exchange failed")
-                
+                logger.error(f"Token exchange failed: {token_response.status_code} - {token_response.text}")
+                return RedirectResponse(f"{FRONTEND_URL}?error=token_exchange_failed")
+
             token_data = token_response.json()
-            logger.info("Discord token exchange successful")
-            
-            # Get user info
+            access_token = token_data.get("access_token")
+
+            if not access_token:
+                return RedirectResponse(f"{FRONTEND_URL}?error=no_access_token")
+
+            # Get user info from Discord
             user_response = await client.get(
                 "https://discord.com/api/users/@me",
-                headers={"Authorization": f"Bearer {token_data['access_token']}"}
+                headers={"Authorization": f"Bearer {access_token}"}
             )
+
+            if user_response.status_code != 200:
+                logger.error(f"User info failed: {user_response.status_code} - {user_response.text}")
+                return RedirectResponse(f"{FRONTEND_URL}?error=user_info_failed")
+
             user_data = user_response.json()
-            
-            # TEMPORARY: Disable role checking to debug 502 error
-            # TODO: Re-enable after fixing the underlying issue
-            # has_access, roles = await check_user_guild_roles(token_data['access_token'])
-            # if not has_access:
-            #     return RedirectResponse(f"{FRONTEND_URL}/access-denied")
+            user_id = user_data.get("id")
+            username = user_data.get("username")
 
-            # Temporarily grant basic access to all Discord users
-            has_access = True
-            roles = ["member"]  # Basic role for debugging
-            
-        # Create secure session using session manager
-        session_token, session_data = await session_manager.create_session(
-            user_id=user_data['id'],
-            username=user_data['username'],
-            access_token=token_data['access_token'],
-            roles=roles,
-            request=request
-        )
-        
-        # Create response with secure cookie and redirect to events page
-        response = RedirectResponse(f"{FRONTEND_URL}/events")
-        response.set_cookie(
-            key="session_token",
-            value=session_token,
-            max_age=24*60*60,  # 24 hours
-            httponly=True,
-            secure=True if FRONTEND_URL.startswith('https') else False,
-            samesite="lax"
-        )
-        return response
-        
+            if not user_id:
+                return RedirectResponse(f"{FRONTEND_URL}?error=no_user_id")
+
+            # Create simple session
+            session_token = secrets.token_urlsafe(32)
+            user_sessions[session_token] = {
+                "user_id": user_id,
+                "username": username,
+                "access_token": access_token,
+                "created_at": datetime.now(timezone.utc).isoformat()
+            }
+
+            logger.info(f"✓ Session created for user {username} ({user_id})")
+            logger.info(f"✓ Session token: {session_token[:8]}...")
+            logger.info(f"✓ Total sessions: {len(user_sessions)}")
+
+            # Redirect to frontend with session token
+            response = RedirectResponse(f"{FRONTEND_URL}?token={session_token}")
+            response.set_cookie("session_token", session_token, httponly=True, max_age=86400)  # 24 hours
+            return response
+
     except Exception as e:
-        logger.error(f"Discord auth error: {e}")
-        raise HTTPException(status_code=400, detail="Authentication failed")
+        logger.error(f"OAuth callback error: {e}")
+        return RedirectResponse(f"{FRONTEND_URL}?error=callback_failed")
 
-@app.get("/auth/logout")
+@app.post("/auth/logout")
 async def logout(request: Request):
-    """Handle logout and redirect to logout confirmation page."""
-    # Get session token and invalidate it using session manager
+    """Logout user."""
     session_token = request.cookies.get("session_token")
-    if session_token:
-        await session_manager.invalidate_session(session_token)
-        logger.info("User session invalidated on logout")
 
-    # Create response with cleared cookie
-    response = RedirectResponse(f"{FRONTEND_URL}/logout-confirmation")
+    if session_token and session_token in user_sessions:
+        del user_sessions[session_token]
+
+    response = JSONResponse({"message": "Logged out"})
     response.delete_cookie("session_token")
     return response
 
 @app.get("/auth/user")
-async def get_current_user_info(current_user: SessionData = Depends(get_current_user)):
-    """Get current user info - requires authentication."""
+async def get_user(request: Request):
+    """Get current user info."""
+    # Get session token from cookie or query param
+    session_token = request.cookies.get("session_token") or request.query_params.get("token")
+
+    if not session_token or session_token not in user_sessions:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    session = user_sessions[session_token]
     return {
-        "user_id": current_user.user_id,
-        "username": current_user.username,
-        "roles": current_user.roles
+        "user_id": session["user_id"],
+        "username": session["username"],
+        "authenticated": True
     }
 
 @app.get("/events")
-async def get_events(current_user: SessionData = Depends(get_current_user)):
+async def get_events(request: Request, current_user: dict = Depends(get_current_user_simple)):
     """Get all mining events from database."""
     try:
         pool = await get_db_pool()
@@ -628,11 +619,11 @@ async def get_events(current_user: SessionData = Depends(get_current_user)):
         raise HTTPException(status_code=500, detail="Database error")
 
 @app.get("/discord/channels")
-async def get_discord_channels(guild_id: str = "814699481912049704", current_user: SessionData = Depends(get_current_user)):
+async def get_discord_channels(request: Request, guild_id: str = "814699481912049704", current_user: dict = Depends(get_current_user_simple)):
     """Get all available Discord voice channels for the guild."""
     # Validate guild ID format
     guild_id = validate_discord_id(guild_id, "Guild ID")
-    log_validation_attempt("get_discord_channels", current_user.user_id, {"guild_id": guild_id})
+    log_validation_attempt("get_discord_channels", current_user["user_id"], {"guild_id": guild_id})
 
     try:
         pool = await get_db_pool()
