@@ -98,6 +98,12 @@ async def discord_callback(code: str = None, state: str = None, error: str = Non
     # Exchange code for access token
     try:
         async with httpx.AsyncClient() as client:
+            print(f"=== Token Exchange Request ===")
+            print(f"URL: https://discord.com/api/oauth2/token")
+            print(f"Client ID: {DISCORD_CLIENT_ID}")
+            print(f"Redirect URI: {DISCORD_REDIRECT_URI}")
+            print(f"Code length: {len(code) if code else 0}")
+
             token_response = await client.post(
                 "https://discord.com/api/oauth2/token",
                 data={
@@ -110,8 +116,13 @@ async def discord_callback(code: str = None, state: str = None, error: str = Non
                 headers={"Content-Type": "application/x-www-form-urlencoded"}
             )
 
+            print(f"=== Token Exchange Response ===")
+            print(f"Status: {token_response.status_code}")
+            print(f"Headers: {dict(token_response.headers)}")
+            print(f"Body: {token_response.text}")
+
             if token_response.status_code != 200:
-                print(f"Token exchange failed: {token_response.status_code} - {token_response.text}")
+                print(f"❌ Token exchange failed: {token_response.status_code}")
                 return RedirectResponse(f"{FRONTEND_URL}?error=token_exchange_failed")
 
             token_data = token_response.json()
