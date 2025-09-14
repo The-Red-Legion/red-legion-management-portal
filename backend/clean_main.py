@@ -21,7 +21,7 @@ DISCORD_REDIRECT_URI = os.getenv("DISCORD_REDIRECT_URI", "http://dev.redlegion.g
 FRONTEND_URL = os.getenv("FRONTEND_URL", "http://dev.redlegion.gg")
 
 print(f"Discord Client ID: {'✓' if DISCORD_CLIENT_ID else '✗'}")
-print(f"Discord Client Secret: {'✓' if DISCORD_CLIENT_SECRET else '✗'}")
+print(f"Discord Client Secret: {'✓' if DISCORD_CLIENT_SECRET else '✗'} (updated)")
 print(f"Redirect URI: {DISCORD_REDIRECT_URI}")
 print(f"Frontend URL: {FRONTEND_URL}")
 
