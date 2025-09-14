@@ -98,6 +98,16 @@ async def discord_callback(code: str = None, state: str = None, error: str = Non
     # Exchange code for access token
     try:
         async with httpx.AsyncClient() as client:
+            # Store debug info for inspection
+            global last_token_exchange_debug
+            last_token_exchange_debug = {
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "client_id": DISCORD_CLIENT_ID,
+                "redirect_uri": DISCORD_REDIRECT_URI,
+                "code_length": len(code) if code else 0,
+                "code_preview": code[:10] + "..." if code and len(code) > 10 else code
+            }
+
             print(f"=== Token Exchange Request ===")
             print(f"URL: https://discord.com/api/oauth2/token")
             print(f"Client ID: {DISCORD_CLIENT_ID}")
@@ -115,6 +125,14 @@ async def discord_callback(code: str = None, state: str = None, error: str = Non
                 },
                 headers={"Content-Type": "application/x-www-form-urlencoded"}
             )
+
+            # Store response debug info
+            last_token_exchange_debug.update({
+                "response_status": token_response.status_code,
+                "response_headers": dict(token_response.headers),
+                "response_body": token_response.text,
+                "success": token_response.status_code == 200
+            })
 
             print(f"=== Token Exchange Response ===")
             print(f"Status: {token_response.status_code}")
@@ -225,6 +243,7 @@ async def debug_sessions():
 
 # Debug counter to see if callback is being hit
 callback_attempts = 0
+last_token_exchange_debug = {}
 
 @app.get("/debug/callback-test")
 async def callback_test():
@@ -235,6 +254,14 @@ async def callback_test():
         "message": "Callback test endpoint reached",
         "attempts": callback_attempts,
         "timestamp": datetime.now(timezone.utc).isoformat()
+    }
+
+@app.get("/debug/token-exchange")
+async def debug_token_exchange():
+    """Get debug information from the last token exchange attempt."""
+    return {
+        "last_token_exchange": last_token_exchange_debug,
+        "has_debug_data": len(last_token_exchange_debug) > 0
     }
 
 if __name__ == "__main__":
