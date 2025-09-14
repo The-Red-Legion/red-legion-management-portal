@@ -122,8 +122,8 @@ jobs:
         Environment=PATH=/opt/red-legion-website/venv/bin
         Environment=PYTHONPATH=/opt/red-legion-website/backend
         EnvironmentFile=-/opt/red-legion-website/.env
-        ExecStartPre=/bin/bash -c 'cd /opt/red-legion-website/backend && /opt/red-legion-website/venv/bin/python startup_check.py'
-        ExecStart=/opt/red-legion-website/venv/bin/python main.py
+        # ExecStartPre=/bin/bash -c 'cd /opt/red-legion-website/backend && /opt/red-legion-website/venv/bin/python startup_check.py'
+        ExecStart=/opt/red-legion-website/venv/bin/python simple_main.py
         ExecReload=/bin/kill -HUP \$MAINPID
         StandardOutput=journal
         StandardError=journal
