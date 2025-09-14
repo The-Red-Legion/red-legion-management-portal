@@ -12,6 +12,7 @@ import sys
 import asyncpg
 import httpx
 from dotenv import load_dotenv
+from google.cloud import secretmanager
 from typing import List, Dict, Optional, Any
 import logging
 import random
@@ -43,6 +44,36 @@ load_dotenv()
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+def get_secret(secret_name, project_id=None):
+    """Retrieve secret from Google Cloud Secret Manager."""
+    if project_id is None:
+        project_id = os.getenv('GOOGLE_CLOUD_PROJECT', 'rl-prod-471116')
+
+    try:
+        client = secretmanager.SecretManagerServiceClient()
+        secret_path = f"projects/{project_id}/secrets/{secret_name}/versions/latest"
+        response = client.access_secret_version(request={"name": secret_path})
+        return response.payload.data.decode("UTF-8")
+    except Exception as e:
+        logger.warning(f"Could not get secret '{secret_name}' from Secret Manager: {e}")
+        return None
+
+def get_config_value(env_var_name, secret_name=None, fallback=None):
+    """Get configuration value from environment variable, then secret manager, then fallback."""
+    # Try environment variable first
+    value = os.getenv(env_var_name)
+    if value:
+        return value
+
+    # Try secret manager if secret_name provided
+    if secret_name:
+        value = get_secret(secret_name)
+        if value:
+            return value
+
+    # Return fallback
+    return fallback
+
 # FastAPI app
 app = FastAPI(
     title="Red Legion Web Payroll",
@@ -51,14 +82,27 @@ app = FastAPI(
 )
 
 
-# Database configuration - Reload environment
-load_dotenv()  
-DATABASE_URL = os.getenv("DATABASE_URL_LOCAL", os.getenv("DATABASE_URL"))
-DISCORD_CLIENT_ID = os.getenv("DISCORD_CLIENT_ID")
-DISCORD_CLIENT_SECRET = os.getenv("DISCORD_CLIENT_SECRET")
-DISCORD_REDIRECT_URI = os.getenv("DISCORD_REDIRECT_URI")
-FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:5173")
-BOT_API_URL = os.getenv("BOT_API_URL", "http://10.128.0.2:8001")
+# Configuration with proper secret management
+DATABASE_URL = get_config_value("DATABASE_URL_LOCAL") or get_config_value("DATABASE_URL", "database-connection-string")
+DISCORD_CLIENT_ID = get_config_value("DISCORD_CLIENT_ID", "discord-client-id")
+DISCORD_CLIENT_SECRET = get_config_value("DISCORD_CLIENT_SECRET", "discord-client-secret")
+DISCORD_REDIRECT_URI = get_config_value("DISCORD_REDIRECT_URI")
+FRONTEND_URL = get_config_value("FRONTEND_URL", fallback="http://localhost:5173")
+BOT_API_URL = get_config_value("BOT_API_URL", fallback="http://10.128.0.2:8001")
+
+# Log configuration status (without exposing secrets)
+logger.info(f"Configuration loaded - DATABASE_URL: {'✓' if DATABASE_URL else '✗'}")
+logger.info(f"Configuration loaded - DISCORD_CLIENT_ID: {'✓' if DISCORD_CLIENT_ID else '✗'}")
+logger.info(f"Configuration loaded - DISCORD_CLIENT_SECRET: {'✓' if DISCORD_CLIENT_SECRET else '✗'}")
+logger.info(f"Configuration loaded - FRONTEND_URL: {FRONTEND_URL}")
+
+# Validate critical configuration
+if not DATABASE_URL:
+    logger.error("DATABASE_URL not configured - required for operation")
+if not DISCORD_CLIENT_ID:
+    logger.error("DISCORD_CLIENT_ID not configured - required for OAuth")
+if not DISCORD_CLIENT_SECRET:
+    logger.error("DISCORD_CLIENT_SECRET not configured - required for OAuth")
 
 # Discord role-based access control constants
 RED_LEGION_GUILD_ID = "814699481912049704"

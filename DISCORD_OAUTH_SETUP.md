@@ -36,8 +36,8 @@ https://localhost:8000/auth/discord/callback
 ### 3. Verify Your Current Settings
 
 Your Discord application should show:
-- **Client ID:** `1411784517655461978` (matches your .env)
-- **Client Secret:** `SGzor2kgR_XrdkOIg1-P3YehiwNr8mrm` (matches your .env)
+- **Client ID:** `[Your Discord Application Client ID]`
+- **Client Secret:** `[Your Discord Application Client Secret]`
 - **Redirect URIs:** The URLs listed above
 
 ### 4. Test the OAuth Flow
