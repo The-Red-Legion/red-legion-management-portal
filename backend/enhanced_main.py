@@ -74,34 +74,70 @@ logger.info(f"FRONTEND_URL: {FRONTEND_URL}")
 # Global database pool
 db_pool = None
 
+def _get_db_password_from_secrets() -> str:
+    """Get database password from Google Secrets Manager (same as Discord bot)."""
+    try:
+        # Initialize the client
+        client = secretmanager.SecretManagerServiceClient()
+
+        # Get project ID from environment or use default
+        project_id = os.getenv('GOOGLE_CLOUD_PROJECT', 'rl-prod-471116')
+
+        # Use the correct secret name for database password (same as bot)
+        secret_name = "db-password"
+        name = f"projects/{project_id}/secrets/{secret_name}/versions/latest"
+
+        # Access the secret version
+        response = client.access_secret_version(request={"name": name})
+        return response.payload.data.decode("UTF-8")
+
+    except Exception as e:
+        logger.error(f"Error getting database password from secrets: {e}")
+        raise
+
+def resolve_database_url() -> str:
+    """
+    Resolve database URL using the same approach as Discord bot.
+    """
+    try:
+        # Known Cloud SQL configuration (same as bot)
+        CLOUD_SQL_INTERNAL_IP = "10.92.0.3"
+        CLOUD_SQL_USERNAME = "arccorp_sys_admin"
+
+        # Get password from Google Secrets Manager
+        password = _get_db_password_from_secrets()
+
+        # URL-encode the password to handle special characters (same as bot)
+        encoded_password = urllib.parse.quote(password, safe='')
+
+        # Use original port or default to 5432
+        port = 5432
+
+        # Get database name
+        database_name = 'red_legion_arccorp_data_store'
+        resolved_url = f"postgresql://{CLOUD_SQL_USERNAME}:{encoded_password}@{CLOUD_SQL_INTERNAL_IP}:{port}/{database_name}"
+
+        logger.info(f"Database URL resolved: postgresql://{CLOUD_SQL_USERNAME}:***@{CLOUD_SQL_INTERNAL_IP}:{port}/{database_name}")
+        return resolved_url
+
+    except Exception as e:
+        logger.error(f"Error resolving database URL: {e}")
+        raise
+
 async def get_db_pool():
-    """Get database connection pool."""
+    """Get database connection pool using Discord bot's proven approach."""
     global db_pool
     if db_pool is None:
         try:
-            if DATABASE_URL:
-                # Parse and decode the DATABASE_URL to handle URL-encoded special characters
-                parsed_url = urllib.parse.urlparse(DATABASE_URL)
+            # Use the same database connection approach as the Discord bot
+            database_url = resolve_database_url()
+            logger.info("Using Discord bot's database connection approach")
 
-                # Decode password if it contains URL-encoded characters
-                decoded_password = urllib.parse.unquote(parsed_url.password) if parsed_url.password else None
-
-                # Reconstruct clean connection parameters
-                if decoded_password:
-                    # Build clean connection string
-                    clean_database_url = f"postgresql://{parsed_url.username}:{decoded_password}@{parsed_url.hostname}:{parsed_url.port}{parsed_url.path}"
-                    logger.info(f"Database connection with decoded password (password length: {len(decoded_password)})")
-                    db_pool = await asyncpg.create_pool(clean_database_url)
-                else:
-                    db_pool = await asyncpg.create_pool(DATABASE_URL)
-
-                logger.info("Database connection pool created successfully")
-            else:
-                logger.warning("No DATABASE_URL configured - running without database")
-                return None
+            db_pool = await asyncpg.create_pool(database_url)
+            logger.info("Database connection pool created successfully")
         except Exception as e:
             logger.error(f"Database connection failed: {e}")
-            logger.error(f"DATABASE_URL format: {DATABASE_URL[:50]}..." if DATABASE_URL else "No URL")
+            logger.warning("Falling back to dummy data mode")
             return None
     return db_pool
 
