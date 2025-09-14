@@ -41,7 +41,7 @@ api.interceptors.response.use(
 export const apiService = {
   // Authentication
   async loginWithDiscord() {
-    const response = await api.get('/auth/login')
+    const response = await api.get('/auth/discord')
     return response.data
   },
 
@@ -156,7 +156,7 @@ export const apiService = {
   // Auth redirects - return proper URLs for window.location
   getLoginUrl() {
     // Auth endpoints go through /api prefix like all other endpoints
-    return import.meta.env.MODE === 'production' ? '/api/auth/login' : 'http://localhost:8000/auth/login'
+    return import.meta.env.MODE === 'production' ? '/api/auth/discord' : 'http://localhost:8000/auth/discord'
   },
 
   getLogoutUrl() {
