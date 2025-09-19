@@ -8,9 +8,9 @@ all:
           ansible_ssh_private_key_file: ~/.ssh/deploy_key
           ansible_ssh_common_args: '-o StrictHostKeyChecking=no'
       vars:
-        app_name: red-legion-website
+        app_name: red-legion-management-portal
         app_user: ubuntu
-        app_directory: /opt/red-legion-website
+        app_directory: /opt/red-legion-management-portal
         python_version: 3.11
         node_version: 18
         domain_name: "{{ web_server_host }}"

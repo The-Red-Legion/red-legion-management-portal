@@ -1,4 +1,4 @@
-name: Deploy Red Legion Website
+name: Deploy Red Legion Management Portal
 
 on:
   push:
@@ -77,23 +77,23 @@ jobs:
         # Deploy using gcloud ssh
         gcloud compute ssh ubuntu@arccorp-web-server --zone us-central1-a --command "
           # Stop existing service
-          sudo systemctl stop red-legion-website-backend || true
-          
+          sudo systemctl stop red-legion-management-portal-backend || true
+
           # Backup and replace application files
-          sudo rm -rf /opt/red-legion-website/backup || true
-          sudo mkdir -p /opt/red-legion-website/backup || true
-          sudo cp -r /opt/red-legion-website/* /opt/red-legion-website/backup/ 2>/dev/null || true
-          sudo find /opt/red-legion-website -mindepth 1 -not -path '*/backup*' -delete || true
-          sudo cp -r /tmp/deployment/* /opt/red-legion-website/
-          sudo chown -R ubuntu:ubuntu /opt/red-legion-website
+          sudo rm -rf /opt/red-legion-management-portal/backup || true
+          sudo mkdir -p /opt/red-legion-management-portal/backup || true
+          sudo cp -r /opt/red-legion-management-portal/* /opt/red-legion-management-portal/backup/ 2>/dev/null || true
+          sudo find /opt/red-legion-management-portal -mindepth 1 -not -path '*/backup*' -delete || true
+          sudo cp -r /tmp/deployment/* /opt/red-legion-management-portal/
+          sudo chown -R ubuntu:ubuntu /opt/red-legion-management-portal
           
           # Create virtual environment and install requirements
-          cd /opt/red-legion-website
+          cd /opt/red-legion-management-portal
           sudo -u ubuntu python3 -m venv venv
           sudo -u ubuntu ./venv/bin/pip install -r requirements.txt
-          
+
           # Create environment file
-          sudo tee /opt/red-legion-website/.env > /dev/null <<EOF
+          sudo tee /opt/red-legion-management-portal/.env > /dev/null <<EOF
         DATABASE_URL='${{ secrets.DATABASE_URL }}'
         BOT_API_URL='${{ secrets.BOT_API_INTERNAL_URL }}'
         DOMAIN_NAME='${{ secrets.DOMAIN_NAME }}'
@@ -104,13 +104,13 @@ jobs:
         EOF
         
           # Fix permissions
-          sudo chown ubuntu:ubuntu /opt/red-legion-website/.env
-          sudo chmod 640 /opt/red-legion-website/.env
+          sudo chown ubuntu:ubuntu /opt/red-legion-management-portal/.env
+          sudo chmod 640 /opt/red-legion-management-portal/.env
 
           # Create systemd service file
-          sudo tee /etc/systemd/system/red-legion-website-backend.service > /dev/null <<'SERVICE_EOF'
+          sudo tee /etc/systemd/system/red-legion-management-portal-backend.service > /dev/null <<'SERVICE_EOF'
         [Unit]
-        Description=Red Legion Website Backend
+        Description=Red Legion Management Portal Backend
         After=network.target
         Wants=network.target
 
@@ -118,12 +118,12 @@ jobs:
         Type=simple
         User=ubuntu
         Group=ubuntu
-        WorkingDirectory=/opt/red-legion-website/backend
-        Environment=PATH=/opt/red-legion-website/venv/bin
-        Environment=PYTHONPATH=/opt/red-legion-website/backend
-        EnvironmentFile=-/opt/red-legion-website/.env
-        # ExecStartPre=/bin/bash -c 'cd /opt/red-legion-website/backend && /opt/red-legion-website/venv/bin/python startup_check.py'
-        ExecStart=/opt/red-legion-website/venv/bin/python enhanced_main.py
+        WorkingDirectory=/opt/red-legion-management-portal/backend
+        Environment=PATH=/opt/red-legion-management-portal/venv/bin
+        Environment=PYTHONPATH=/opt/red-legion-management-portal/backend
+        EnvironmentFile=-/opt/red-legion-management-portal/.env
+        # ExecStartPre=/bin/bash -c 'cd /opt/red-legion-management-portal/backend && /opt/red-legion-management-portal/venv/bin/python startup_check.py'
+        ExecStart=/opt/red-legion-management-portal/venv/bin/python enhanced_main.py
         ExecReload=/bin/kill -HUP \$MAINPID
         StandardOutput=journal
         StandardError=journal
@@ -138,9 +138,9 @@ jobs:
         SERVICE_EOF
 
           # Set proper permissions for backend files
-          sudo chown -R ubuntu:ubuntu /opt/red-legion-website
-          sudo chmod +x /opt/red-legion-website/backend/startup_check.py
-          sudo chmod +x /opt/red-legion-website/backend/main.py
+          sudo chown -R ubuntu:ubuntu /opt/red-legion-management-portal
+          sudo chmod +x /opt/red-legion-management-portal/backend/startup_check.py
+          sudo chmod +x /opt/red-legion-management-portal/backend/main.py
 
           # Reload systemd and configure service
           sudo systemctl daemon-reload
@@ -190,14 +190,14 @@ jobs:
 
             # Serve static files directly
             location /static/ {
-                alias /opt/red-legion-website/static/;
+                alias /opt/red-legion-management-portal/static/;
                 expires 1y;
                 add_header Cache-Control \"public, immutable\";
             }
 
             # Serve frontend static files
             location /assets/ {
-                alias /opt/red-legion-website/frontend/dist/assets/;
+                alias /opt/red-legion-management-portal/frontend/dist/assets/;
                 expires 1y;
                 add_header Cache-Control \"public, immutable\";
             }
@@ -218,7 +218,7 @@ jobs:
 
             # Frontend routes (Vue.js SPA) - catch-all, must come LAST
             location / {
-                root /opt/red-legion-website/frontend/dist;
+                root /opt/red-legion-management-portal/frontend/dist;
                 try_files \$uri \$uri/ /index.html;
             }
 
@@ -241,19 +241,19 @@ jobs:
           sudo systemctl reload nginx
           
           # Stop existing service if running
-          sudo systemctl stop red-legion-website-backend || true
+          sudo systemctl stop red-legion-management-portal-backend || true
 
           # Start and enable the service
-          sudo systemctl enable red-legion-website-backend
-          sudo systemctl start red-legion-website-backend
+          sudo systemctl enable red-legion-management-portal-backend
+          sudo systemctl start red-legion-management-portal-backend
 
           # Wait for service to start and check status with detailed output
           sleep 8
           echo '=== Service Status ==='
-          sudo systemctl status red-legion-website-backend --no-pager -l
+          sudo systemctl status red-legion-management-portal-backend --no-pager -l
 
           echo '=== Service Logs ==='
-          sudo journalctl -u red-legion-website-backend --no-pager -l --since='5 minutes ago'
+          sudo journalctl -u red-legion-management-portal-backend --no-pager -l --since='5 minutes ago'
 
           echo '=== Testing Backend Connectivity ==='
           curl -f http://127.0.0.1:8000/ping || echo 'Backend not responding on localhost'
