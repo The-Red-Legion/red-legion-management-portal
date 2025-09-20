@@ -176,12 +176,14 @@
 
 <script>
 import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { useRoute } from 'vue-router'
 import { apiService } from '../api.js'
 
 export default {
   name: 'EventList',
   emits: ['event-selected'],
   setup(props, { emit }) {
+    const route = useRoute()
     const events = ref([])
     const loading = ref(false)
     const error = ref(null)
@@ -202,6 +204,18 @@ export default {
         for (const event of eventData) {
           if (!event.ended_at) { // Live event
             fetchParticipants(event.event_id)
+          }
+        }
+
+        // Check for route query parameter and auto-select event
+        const eventIdFromRoute = route.query.event
+        if (eventIdFromRoute) {
+          const eventToSelect = eventData.find(event => event.event_id === eventIdFromRoute)
+          if (eventToSelect) {
+            // Auto-select the event after a short delay to ensure UI is ready
+            setTimeout(() => {
+              selectEvent(eventToSelect)
+            }, 500)
           }
         }
       } catch (err) {

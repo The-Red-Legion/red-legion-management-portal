@@ -132,7 +132,8 @@ export const apiService = {
   },
 
   async getPayrollSummary(eventId) {
-    throw new Error('Admin functions not available in no-auth mode')
+    const response = await api.get(`/payroll/${eventId}/summary`)
+    return response.data
   },
 
   async exportPayrollAdmin(eventId) {

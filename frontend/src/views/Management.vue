@@ -156,9 +156,9 @@
                       >
                         ✅ View
                       </button>
-                      <router-link 
+                      <router-link
                         v-else
-                        :to="`/?event_id=${event.event_id}`"
+                        :to="`/?event=${event.event_id}`"
                         class="text-blue-400 hover:text-blue-300 cursor-pointer transition-colors text-xs underline"
                         title="Click to calculate payroll"
                       >

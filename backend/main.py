@@ -115,12 +115,18 @@ async def get_events(request: Request):
         async with pool.acquire() as conn:
             events = await conn.fetch("""
                 SELECT
-                    event_id, event_name, event_type, organizer_name, organizer_id,
-                    status, started_at, ended_at, created_at, updated_at,
-                    total_participants, total_duration_minutes,
-                    location_notes, description as additional_notes
-                FROM events
-                ORDER BY created_at DESC
+                    e.event_id, e.event_name, e.event_type, e.organizer_name, e.organizer_id,
+                    e.status, e.started_at, e.ended_at, e.created_at, e.updated_at,
+                    e.total_participants, e.total_duration_minutes,
+                    e.location_notes, e.description as additional_notes,
+                    CASE WHEN ps.event_id IS NOT NULL THEN true ELSE false END as payroll_calculated
+                FROM events e
+                LEFT JOIN (
+                    SELECT DISTINCT event_id
+                    FROM payroll_sessions
+                    WHERE final_payout_auec IS NOT NULL
+                ) ps ON e.event_id = ps.event_id
+                ORDER BY e.created_at DESC
             """)
 
             return [dict(event) for event in events]
@@ -621,6 +627,102 @@ async def export_payroll(event_id: str):
     except Exception as e:
         logger.error(f"Error exporting payroll for event {event_id}: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to export payroll: {str(e)}")
+
+@app.get("/payroll/{event_id}/summary")
+@app.get("/mgmt/api/payroll/{event_id}/summary")
+async def get_payroll_summary(event_id: str):
+    """Get payroll summary for a closed event."""
+    try:
+        event_id = validate_event_id(event_id)
+
+        pool = await get_db_pool()
+        if pool is None:
+            raise HTTPException(status_code=500, detail="Database connection failed")
+
+        async with pool.acquire() as conn:
+            # Get event details
+            event = await conn.fetchrow("""
+                SELECT event_id, event_name, event_type, organizer_name, status,
+                       started_at, ended_at, total_participants, total_duration_minutes
+                FROM events
+                WHERE event_id = $1
+            """, event_id)
+
+            if not event:
+                raise HTTPException(status_code=404, detail="Event not found")
+
+            # Get payroll data from payroll_sessions
+            payroll_data = await conn.fetch("""
+                SELECT user_id, username, participation_minutes,
+                       participation_percentage, final_payout_auec,
+                       base_payout_auec, donation_bonus, is_donating
+                FROM payroll_sessions
+                WHERE event_id = $1
+                ORDER BY final_payout_auec DESC
+            """, event_id)
+
+            if not payroll_data:
+                raise HTTPException(status_code=404, detail="No payroll data found for this event")
+
+            # Calculate statistics
+            total_payout = sum(p['final_payout_auec'] for p in payroll_data if p['final_payout_auec'])
+            total_participation = sum(p['participation_minutes'] for p in payroll_data if p['participation_minutes'])
+            average_payout = total_payout / len(payroll_data) if payroll_data else 0
+
+            # Get latest payroll calculation metadata
+            payroll_meta = await conn.fetchrow("""
+                SELECT calculated_by_name, calculation_timestamp, ore_quantities
+                FROM payroll_sessions
+                WHERE event_id = $1
+                ORDER BY calculation_timestamp DESC
+                LIMIT 1
+            """, event_id)
+
+            # Structure response similar to what the frontend expects
+            summary_data = {
+                "event": {
+                    "event_id": event['event_id'],
+                    "event_name": event['event_name'],
+                    "event_type": event['event_type'],
+                    "organizer_name": event['organizer_name'],
+                    "status": event['status'],
+                    "started_at": event['started_at'].isoformat() if event['started_at'] else None,
+                    "ended_at": event['ended_at'].isoformat() if event['ended_at'] else None,
+                    "total_participants": event['total_participants'] or 0,
+                    "total_duration_minutes": event['total_duration_minutes'] or 0
+                },
+                "payroll": {
+                    "calculated_by_name": payroll_meta['calculated_by_name'] if payroll_meta else "Unknown",
+                    "calculation_timestamp": payroll_meta['calculation_timestamp'].isoformat() if payroll_meta and payroll_meta['calculation_timestamp'] else None
+                },
+                "statistics": {
+                    "total_payout_auec": int(total_payout),
+                    "average_payout_auec": int(average_payout),
+                    "total_participation_minutes": int(total_participation),
+                    "total_scu_collected": None,  # Could be calculated from ore_quantities if available
+                    "ore_breakdown": None  # Could be reconstructed if ore_quantities stored
+                },
+                "payouts": [
+                    {
+                        "user_id": p['user_id'],
+                        "username": p['username'],
+                        "participation_minutes": p['participation_minutes'] or 0,
+                        "participation_percentage": round(p['participation_percentage'] or 0, 2),
+                        "base_payout_auec": int(p['base_payout_auec'] or 0),
+                        "final_payout_auec": int(p['final_payout_auec'] or 0),
+                        "donation_bonus": int(p['donation_bonus'] or 0),
+                        "is_donor": bool(p['is_donating'])
+                    }
+                    for p in payroll_data
+                ]
+            }
+
+            logger.info(f"Retrieved payroll summary for event {event_id}: {len(payroll_data)} participants, {total_payout:,} aUEC total")
+            return summary_data
+
+    except Exception as e:
+        logger.error(f"Error getting payroll summary for event {event_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to get payroll summary: {str(e)}")
 
 # Startup/shutdown events
 @app.on_event("startup")
