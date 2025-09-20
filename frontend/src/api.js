@@ -72,6 +72,23 @@ export const apiService = {
   async getDiscordChannels() {
     // Return empty array since Discord integration is disabled in no-auth mode
     return []
+  },
+
+  // Admin functions (placeholders for no-auth version)
+  async deleteAdminEvent(eventId) {
+    throw new Error('Admin functions not available in no-auth mode')
+  },
+
+  async createTestEvent(eventType) {
+    throw new Error('Admin functions not available in no-auth mode')
+  },
+
+  async getPayrollSummary(eventId) {
+    throw new Error('Admin functions not available in no-auth mode')
+  },
+
+  async exportPayroll(eventId) {
+    throw new Error('Admin functions not available in no-auth mode')
   }
 }
 
