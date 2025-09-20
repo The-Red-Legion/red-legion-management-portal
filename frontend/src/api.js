@@ -66,6 +66,12 @@ export const apiService = {
   async health() {
     const response = await api.get('/health')
     return response.data
+  },
+
+  // Discord Integration (placeholder for no-auth version)
+  async getDiscordChannels() {
+    // Return empty array since Discord integration is disabled in no-auth mode
+    return []
   }
 }
 

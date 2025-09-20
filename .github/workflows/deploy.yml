@@ -125,7 +125,7 @@ jobs:
         Type=simple
         User=ubuntu
         Group=ubuntu
-        WorkingDirectory=/opt/red-legion-management-portal
+        WorkingDirectory=/opt/red-legion-management-portal/backend
         Environment=PATH=/opt/red-legion-management-portal/venv/bin
         Environment=PYTHONPATH=/opt/red-legion-management-portal
         EnvironmentFile=-/opt/red-legion-management-portal/.env
