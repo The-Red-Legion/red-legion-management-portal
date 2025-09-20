@@ -834,16 +834,8 @@ export default {
         
       } catch (error) {
         console.error('Error loading Discord channels:', error)
-        // Use fallback channels if API fails
-        availableChannels.value = [
-          { id: '123456789', name: '🎤 General Voice', type: 'voice', category: 'general' },
-          { id: '123456790', name: '⛏️ Mining Alpha', type: 'voice', category: 'mining' },
-          { id: '123456791', name: '⛏️ Mining Beta', type: 'voice', category: 'mining' },
-          { id: '123456792', name: '🔧 Salvage Ops', type: 'voice', category: 'salvage' },
-          { id: '123456793', name: '⚔️ Combat Wing', type: 'voice', category: 'combat' },
-          { id: '123456794', name: '🚀 Exploration', type: 'voice', category: 'general' },
-          { id: '814699481912049709', name: '🎥 Stream/Restricted', type: 'voice', category: 'restricted' }
-        ]
+        // Don't use fallback channels - if Discord isn't connected, voice tracking won't work
+        availableChannels.value = []
       }
     }
 

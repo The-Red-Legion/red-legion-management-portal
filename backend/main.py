@@ -108,6 +108,103 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Bot API configuration
+BOT_API_URL = os.getenv("BOT_API_URL", "http://localhost:8001")
+
+async def start_bot_voice_tracking(event_id: str, guild_id: str, tracked_channels: Optional[List[Dict[str, Any]]]) -> Dict[str, Any]:
+    """Start voice tracking for an event by calling the Discord bot API."""
+    try:
+        # Convert tracked_channels to the format expected by the bot
+        channels = {}
+        if tracked_channels:
+            for i, channel in enumerate(tracked_channels):
+                if isinstance(channel, dict) and 'id' in channel:
+                    channel_name = channel.get('name', f'channel_{i}')
+                    channels[channel_name] = str(channel['id'])
+
+        # If no channels provided, use default mining channels
+        if not channels:
+            # Bot will use default channels for the guild
+            channels = None
+
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.post(
+                f"{BOT_API_URL}/events/{event_id}/start-tracking",
+                json={
+                    "event_id": event_id,
+                    "guild_id": int(guild_id),
+                    "channels": channels
+                }
+            )
+
+            if response.status_code == 200:
+                bot_data = response.json()
+                return {
+                    "success": True,
+                    "message": "Voice tracking started successfully",
+                    "channels_tracked": bot_data.get("channels_tracked", 0),
+                    "bot_response": bot_data
+                }
+            else:
+                error_detail = response.text
+                logger.error(f"Bot API error for event {event_id}: {response.status_code} - {error_detail}")
+                return {
+                    "success": False,
+                    "error": f"Bot API returned {response.status_code}: {error_detail}",
+                    "fallback": "Event created but voice tracking not started"
+                }
+
+    except httpx.TimeoutException:
+        logger.error(f"Bot API timeout for event {event_id}")
+        return {
+            "success": False,
+            "error": "Bot API timeout",
+            "fallback": "Event created but voice tracking not started"
+        }
+    except Exception as e:
+        logger.error(f"Bot integration error for event {event_id}: {e}")
+        return {
+            "success": False,
+            "error": str(e),
+            "fallback": "Event created but voice tracking not started"
+        }
+
+async def stop_bot_voice_tracking(event_id: str) -> Dict[str, Any]:
+    """Stop voice tracking for an event by calling the Discord bot API."""
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.post(
+                f"{BOT_API_URL}/events/{event_id}/stop-tracking"
+            )
+
+            if response.status_code == 200:
+                bot_data = response.json()
+                return {
+                    "success": True,
+                    "message": "Voice tracking stopped successfully",
+                    "bot_response": bot_data
+                }
+            else:
+                error_detail = response.text
+                logger.error(f"Bot API error stopping event {event_id}: {response.status_code} - {error_detail}")
+                return {
+                    "success": False,
+                    "error": f"Bot API returned {response.status_code}: {error_detail}"
+                }
+
+    except httpx.TimeoutException:
+        logger.error(f"Bot API timeout stopping event {event_id}")
+        return {
+            "success": False,
+            "error": "Bot API timeout"
+        }
+    except Exception as e:
+        logger.error(f"Bot integration error stopping event {event_id}: {e}")
+        return {
+            "success": False,
+            "error": str(e)
+        }
+
 # Health check endpoints
 @app.get("/ping")
 @app.get("/mgmt/api/ping")
@@ -653,6 +750,9 @@ async def close_event(event_id: str):
 
                 logger.info(f"✅ Event {event_id} closed and payroll {payroll_id} created with status 'open'")
 
+                # Stop voice tracking via bot API
+                bot_integration_result = await stop_bot_voice_tracking(event_id)
+
                 return {
                     "event_id": event_id,
                     "status": "closed",
@@ -661,7 +761,8 @@ async def close_event(event_id: str):
                     "total_duration_minutes": event['total_duration_minutes'] or 0,
                     "payroll_id": payroll_id,
                     "payroll_status": "open",
-                    "message": f"Event {event_id} closed and payroll {payroll_id} created (ready for calculations)"
+                    "message": f"Event {event_id} closed and payroll {payroll_id} created (ready for calculations)",
+                    "discord_integration": bot_integration_result
                 }
 
     except Exception as e:
@@ -1273,14 +1374,18 @@ async def create_event(request: EventCreationRequest):
                 FROM events WHERE event_id = $1
             """, event_id)
 
-            # For no-auth version, we skip Discord integration but log the attempt
-            logger.info(f"Event {event_id} created successfully (Discord integration skipped in no-auth mode)")
+            # Integrate with Discord bot for voice tracking
+            bot_integration_result = await start_bot_voice_tracking(
+                event_id,
+                request.guild_id,
+                request.tracked_channels
+            )
 
             return {
                 "success": True,
-                "message": "Event created successfully (Discord integration skipped in no-auth mode)",
+                "message": "Event created successfully",
                 "event": dict(event_data),
-                "discord_integration": {"success": False, "note": "Discord integration not available in no-auth mode"}
+                "discord_integration": bot_integration_result
             }
 
     except Exception as e:
@@ -1288,6 +1393,128 @@ async def create_event(request: EventCreationRequest):
         import traceback
         logger.error(f"Full traceback: {traceback.format_exc()}")
         raise HTTPException(status_code=500, detail="Failed to create event")
+
+@app.get("/discord/channels")
+@app.get("/mgmt/api/discord/channels")
+async def get_discord_channels(guild_id: str = "814699481912049704"):
+    """Get all available Discord voice channels for the guild."""
+    try:
+        pool = await get_db_pool()
+        if pool is None:
+            # Return empty channels when database is not available - no point in fake channels
+            return {
+                "channels": [],
+                "message": "Discord channels unavailable - database not connected"
+            }
+
+        async with pool.acquire() as conn:
+            # Try to get channels from discord_channels table
+            try:
+                channels = await conn.fetch("""
+                    SELECT channel_id, channel_name, channel_type, category_name, is_active
+                    FROM discord_channels
+                    WHERE guild_id = $1 AND channel_type = 'voice' AND is_active = true
+                    ORDER BY category_name, channel_name
+                """, int(guild_id))
+
+                if channels:
+                    channel_list = [
+                        {
+                            "id": str(row["channel_id"]),
+                            "name": row["channel_name"],
+                            "type": row["channel_type"],
+                            "category": row["category_name"] or "general"
+                        }
+                        for row in channels
+                    ]
+                    return {
+                        "channels": channel_list,
+                        "message": f"Loaded {len(channel_list)} voice channels from database"
+                    }
+                else:
+                    # No channels in database
+                    return {
+                        "channels": [],
+                        "message": "No Discord channels found in database - sync channels first"
+                    }
+
+            except Exception as table_error:
+                logger.warning(f"discord_channels table not available, using fallback: {table_error}")
+                # Fallback to mining_channels table
+                try:
+                    mining_channels = await conn.fetch("""
+                        SELECT channel_id, channel_name
+                        FROM mining_channels
+                        WHERE is_active = true
+                        ORDER BY channel_name
+                    """)
+
+                    if mining_channels:
+                        channel_list = [
+                            {
+                                "id": str(row["channel_id"]),
+                                "name": row["channel_name"],
+                                "type": "voice",
+                                "category": "mining"
+                            }
+                            for row in mining_channels
+                        ]
+                        return {
+                            "channels": channel_list,
+                            "message": f"Loaded {len(channel_list)} mining channels from database"
+                        }
+                except Exception:
+                    pass
+
+                # No tables available
+                return {
+                    "channels": [],
+                    "message": "Discord channels table not found - database not set up"
+                }
+
+    except Exception as e:
+        logger.error(f"Error fetching Discord channels: {e}")
+        # Return empty channels on any error - no point in fake channels
+        return {
+            "channels": [],
+            "message": f"Discord channels unavailable - error: {str(e)}"
+        }
+
+@app.post("/discord/channels/sync")
+@app.post("/mgmt/api/discord/channels/sync")
+async def sync_discord_channels(guild_id: str = "814699481912049704"):
+    """Sync Discord channels from Discord API using bot integration."""
+    try:
+        pool = await get_db_pool()
+        if pool is None:
+            return {
+                "success": False,
+                "message": "Database not available - cannot sync channels",
+                "channels_synced": 0
+            }
+
+        # Import and use the Discord API client
+        from services.discord_api import sync_discord_channels_to_db
+
+        # Use the Discord API client to fetch and sync real channels
+        result = await sync_discord_channels_to_db(guild_id, pool)
+
+        return result
+
+    except ImportError:
+        logger.error("Discord API service not available")
+        return {
+            "success": False,
+            "message": "Discord API service not available",
+            "channels_synced": 0
+        }
+    except Exception as e:
+        logger.error(f"Error syncing Discord channels: {e}")
+        return {
+            "success": False,
+            "message": f"Failed to sync channels: {str(e)}",
+            "channels_synced": 0
+        }
 
 # Startup/shutdown events
 @app.on_event("startup")

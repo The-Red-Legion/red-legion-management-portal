@@ -116,10 +116,29 @@ export const apiService = {
     return response.data
   },
 
-  // Discord Integration (placeholder for no-auth version)
+  // Discord Integration
   async getDiscordChannels() {
-    // Return empty array since Discord integration is disabled in no-auth mode
-    return []
+    try {
+      const response = await api.get('/discord/channels')
+      return response.data
+    } catch (error) {
+      console.error('Error fetching Discord channels:', error)
+      // Return empty channels if API fails - no point in fake channels if Discord isn't connected
+      return {
+        channels: [],
+        message: 'Discord channels unavailable - bot not connected'
+      }
+    }
+  },
+
+  async syncDiscordChannels() {
+    try {
+      const response = await api.post('/discord/channels/sync')
+      return response.data
+    } catch (error) {
+      console.error('Error syncing Discord channels:', error)
+      throw error
+    }
   },
 
   // Admin functions (placeholders for no-auth version)
