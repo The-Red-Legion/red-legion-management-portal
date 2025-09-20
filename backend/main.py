@@ -219,31 +219,31 @@ async def get_trading_locations():
         # Orison should be the default option
         return [
             {
-                "id": "orison",
-                "name": "Orison",
-                "planet": "Crusader",
-                "system": "Stanton",
+                "location_id": 4,
+                "location_name": "Orison",
+                "station_outpost": "Crusader",
+                "system_name": "Stanton",
                 "is_default": True
             },
             {
-                "id": "area18",
-                "name": "Area 18",
-                "planet": "ArcCorp",
-                "system": "Stanton",
+                "location_id": 1,
+                "location_name": "Area 18",
+                "station_outpost": "ArcCorp",
+                "system_name": "Stanton",
                 "is_default": False
             },
             {
-                "id": "lorville",
-                "name": "Lorville",
-                "planet": "Hurston",
-                "system": "Stanton",
+                "location_id": 2,
+                "location_name": "Lorville",
+                "station_outpost": "Hurston",
+                "system_name": "Stanton",
                 "is_default": False
             },
             {
-                "id": "new_babbage",
-                "name": "New Babbage",
-                "planet": "microTech",
-                "system": "Stanton",
+                "location_id": 3,
+                "location_name": "New Babbage",
+                "station_outpost": "microTech",
+                "system_name": "Stanton",
                 "is_default": False
             }
         ]
@@ -262,16 +262,34 @@ async def get_material_prices(materials: str):
         # Get UEX prices
         uex_prices = get_fallback_uex_prices()
 
+        # Define best selling locations for different materials
+        best_locations = {
+            'QUANTAINIUM': {"location": "Orison", "system": "Stanton", "station": "Crusader"},
+            'BEXALITE': {"location": "Area 18", "system": "Stanton", "station": "ArcCorp"},
+            'TARANITE': {"location": "Lorville", "system": "Stanton", "station": "Hurston"},
+            'LARANITE': {"location": "New Babbage", "system": "Stanton", "station": "microTech"},
+            'TITANIUM': {"location": "Area 18", "system": "Stanton", "station": "ArcCorp"},
+            'COPPER': {"location": "Lorville", "system": "Stanton", "station": "Hurston"},
+            'DIAMOND': {"location": "Orison", "system": "Stanton", "station": "Crusader"},
+            'GOLD': {"location": "Area 18", "system": "Stanton", "station": "ArcCorp"},
+            'AGRICIUM': {"location": "Orison", "system": "Stanton", "station": "Crusader"},
+            'BERYL': {"location": "New Babbage", "system": "Stanton", "station": "microTech"},
+            'BORASE': {"location": "Lorville", "system": "Stanton", "station": "Hurston"},
+            'HEPHAESTANITE': {"location": "Area 18", "system": "Stanton", "station": "ArcCorp"},
+            'HADANITE': {"location": "Orison", "system": "Stanton", "station": "Crusader"},
+        }
+
         # Filter for requested materials and format as array
         price_list = []
         for material in material_names:
             if material in uex_prices:
+                best_loc = best_locations.get(material, {"location": "Orison", "system": "Stanton", "station": "Crusader"})
                 price_list.append({
                     "material_name": material,
                     "highest_price": uex_prices[material],
-                    "best_location": "Orison",
-                    "best_system": "Stanton",
-                    "best_station": "Orison"
+                    "best_location": best_loc["location"],
+                    "best_system": best_loc["system"],
+                    "best_station": best_loc["station"]
                 })
 
         return price_list
@@ -290,24 +308,19 @@ async def get_location_prices(location_id: str, materials: str = ""):
         # Get base UEX prices
         base_prices = get_fallback_uex_prices()
 
-        # Apply location modifiers (simplified for now)
+        # Apply location modifiers using numeric IDs
         location_modifiers = {
-            "orison": 1.0,     # Base prices
-            "area18": 0.95,    # Slightly lower
-            "lorville": 0.92,  # Lower prices
-            "new_babbage": 0.98  # Slightly lower
+            4: 1.0,     # Orison - Base prices
+            1: 0.95,    # Area 18 - Slightly lower
+            2: 0.92,    # Lorville - Lower prices
+            3: 0.98     # New Babbage - Slightly lower
         }
 
-        modifier = location_modifiers.get(location_id.lower(), 1.0)
-
-        # Get location name for display
-        location_names = {
-            "orison": "Orison",
-            "area18": "Area 18",
-            "lorville": "Lorville",
-            "new_babbage": "New Babbage"
-        }
-        location_name = location_names.get(location_id.lower(), location_id.title())
+        try:
+            location_id_int = int(location_id)
+            modifier = location_modifiers.get(location_id_int, 1.0)
+        except ValueError:
+            modifier = 1.0
 
         # Filter for requested materials and apply location modifier, format as array
         price_list = []
