@@ -17,10 +17,10 @@ uex_service = UEXService(BOT_API_URL)
 @router.get("/uex-prices")
 @router.get("/mgmt/api/uex-prices")
 async def get_uex_prices_endpoint():
-    """Get current UEX ore prices."""
+    """Get current UEX ore prices with status information."""
     try:
-        prices = await uex_service.get_uex_prices()
-        return prices
+        price_data = await uex_service.get_uex_prices()
+        return price_data
     except Exception as e:
         logger.error(f"Error fetching UEX prices: {e}")
         raise HTTPException(status_code=500, detail="Failed to fetch UEX prices")

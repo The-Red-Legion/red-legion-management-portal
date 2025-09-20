@@ -20,6 +20,11 @@
         </div>
       </div>
 
+      <!-- System Status -->
+      <div class="mb-6">
+        <SystemStatus />
+      </div>
+
       <!-- Main Content -->
       <div class="bg-space-gray-800 rounded-lg shadow-xl p-6">
         <!-- Loading State -->
@@ -415,9 +420,13 @@
 <script>
 import { ref, onMounted, onUnmounted } from 'vue'
 import { apiService } from '../api.js'
+import SystemStatus from '../components/SystemStatus.vue'
 
 export default {
   name: 'Management',
+  components: {
+    SystemStatus
+  },
   setup() {
     const loading = ref(true)
     const events = ref([])

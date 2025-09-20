@@ -13,19 +13,40 @@ class UEXService:
     def __init__(self, bot_api_url: str):
         self.bot_api_url = bot_api_url
 
-    async def get_uex_prices(self) -> Dict[str, float]:
-        """Get current UEX ore prices from bot API with fallback."""
+    async def get_uex_prices(self) -> Dict[str, Any]:
+        """Get current UEX ore prices from bot API with fallback and status info."""
         try:
             async with httpx.AsyncClient(timeout=10.0) as client:
                 response = await client.get(f"{self.bot_api_url}/api/uex-prices")
                 if response.status_code == 200:
-                    return response.json()
+                    data = response.json()
+                    logger.info("✅ UEX prices fetched from live API")
+                    return {
+                        "prices": data,
+                        "source": "live_api",
+                        "status": "connected",
+                        "message": "Live UEX prices from bot API",
+                        "last_updated": datetime.now().isoformat()
+                    }
                 else:
-                    logger.warning(f"UEX API returned {response.status_code}")
-                    return self.get_fallback_uex_prices()
+                    logger.warning(f"⚠️ UEX API returned {response.status_code}, using fallback")
+                    return {
+                        "prices": self.get_fallback_uex_prices(),
+                        "source": "fallback",
+                        "status": "api_error",
+                        "message": f"UEX API error {response.status_code} - using fallback prices",
+                        "last_updated": datetime.now().isoformat()
+                    }
         except Exception as e:
-            logger.error(f"Error fetching UEX prices: {e}")
-            return self.get_fallback_uex_prices()
+            logger.error(f"❌ Error fetching UEX prices: {e}")
+            return {
+                "prices": self.get_fallback_uex_prices(),
+                "source": "fallback",
+                "status": "disconnected",
+                "message": f"UEX API unavailable - using fallback prices",
+                "error": str(e),
+                "last_updated": datetime.now().isoformat()
+            }
 
     def get_fallback_uex_prices(self) -> Dict[str, float]:
         """Fallback UEX prices when API is unavailable."""
@@ -75,12 +96,13 @@ class UEXService:
             'INERT_MATERIALS': {"location": "Any Location", "system": "Stanton", "station": "Any"}
         }
 
-    async def get_material_prices(self, materials: str) -> List[Dict[str, Any]]:
-        """Get prices for specific materials."""
+    async def get_material_prices(self, materials: str) -> Dict[str, Any]:
+        """Get prices for specific materials with status information."""
         material_names = [name.strip().upper() for name in materials.split(',')]
 
-        # Get UEX prices
-        uex_prices = await self.get_uex_prices()
+        # Get UEX prices with status
+        price_data = await self.get_uex_prices()
+        uex_prices = price_data["prices"]
         best_locations = self.get_best_selling_locations()
 
         price_list = []
@@ -99,14 +121,21 @@ class UEXService:
                     "best_station": best_loc["station"]
                 })
 
-        return price_list
+        return {
+            "materials": price_list,
+            "source": price_data["source"],
+            "status": price_data["status"],
+            "message": price_data["message"],
+            "last_updated": price_data["last_updated"]
+        }
 
-    async def get_location_prices(self, location_id: int, materials: str) -> List[Dict[str, Any]]:
-        """Get prices for materials at a specific location."""
+    async def get_location_prices(self, location_id: int, materials: str) -> Dict[str, Any]:
+        """Get prices for materials at a specific location with status information."""
         material_names = [name.strip().upper() for name in materials.split(',') if name.strip()]
 
-        # Get base UEX prices
-        base_prices = await self.get_uex_prices()
+        # Get base UEX prices with status
+        price_data = await self.get_uex_prices()
+        base_prices = price_data["prices"]
 
         # Apply location modifiers using numeric IDs
         location_modifiers = {
@@ -143,7 +172,13 @@ class UEXService:
                     "modifier": modifier
                 })
 
-        return price_list
+        return {
+            "location_prices": price_list,
+            "source": price_data["source"],
+            "status": price_data["status"],
+            "message": price_data["message"],
+            "last_updated": price_data["last_updated"]
+        }
 
     async def get_trading_locations(self) -> List[Dict[str, Any]]:
         """Get list of trading locations."""
