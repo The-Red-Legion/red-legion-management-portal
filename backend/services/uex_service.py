@@ -80,34 +80,38 @@ class UEXService:
     def get_fallback_uex_prices(self) -> Dict[str, float]:
         """Static fallback UEX prices when no cached data is available (last resort)."""
         return {
-            'QUANTAINIUM': 22210.0,
+            # Current live UEX data (as of latest query)
+            'AGRICIUM': 2349.0,
+            'ALUMINUM': 293.0,
+            'ASTATINE': 1637.0,
+            'BERYL': 2559.0,
             'BEXALITE': 6729.0,
             'BORASE': 3059.0,
-            'TARANITE': 8718.0,
-            'LARANITE': 2606.0,
-            'AGRICIUM': 2349.0,
-            'HEPHAESTANITE': 2334.0,
-            'HADANITE': 3500.0,  # Not in live data, keeping previous
-            'APHORITE': 3200.0,  # Not in live data, keeping previous
-            'DOLIVINE': 3000.0,  # Not in live data, keeping previous
-            'TITANIUM': 447.0,
-            'DIAMOND': 7.40,     # Not in live data, keeping previous
-            'GOLD': 5858.0,
             'COPPER': 342.0,
-            'BERYL': 2559.0,
-            'TUNGSTEN': 606.0,
             'CORUNDUM': 351.0,
+            'GOLD': 5858.0,
+            'GOLDEN MEDMON': 19766.0,
+            'HEPHAESTANITE': 2334.0,
+            'HEXAPOLYMESH COATING': 1.0,
+            'IRON': 376.0,
+            'LARANITE': 2606.0,
+            'QUANTAINIUM': 22210.0,
             'QUARTZ': 368.0,
-            'ALUMINUM': 293.0,
-            'ASTATINE': 1637.0,  # New from live data
-            'IRON': 376.0,      # New from live data
-            'SILICON': 198.0,   # New from live data
-            'TIN': 320.0,       # New from live data
-            'STILERON': 29243.0, # New from live data
-            'RICCITE': 20728.0,  # New from live data
-            'GOLDEN MEDMON': 19766.0, # New from live data
-            'HEXAPOLYMESH COATING': 1.0, # New from live data
-            'INERT_MATERIALS': 0.01
+            'RICCITE': 20728.0,
+            'SILICON': 198.0,
+            'STILERON': 29243.0,
+            'TARANITE': 8718.0,
+            'TIN': 320.0,
+            'TITANIUM': 447.0,
+            'TUNGSTEN': 606.0,
+
+            # Additional materials not currently in UEX but known to be mineable
+            'HADANITE': 3500.0,     # High-value gem (Daymar, Aberdeen)
+            'APHORITE': 3200.0,     # Medium-value gem (Daymar, Lyria)
+            'DOLIVINE': 3000.0,     # Medium-value gem (Lyria, Wala)
+            'DIAMOND': 8000.0,      # High-value gem (Aaron Halo)
+            'JANALITE': 4500.0,     # High-value gem (Microtech moons)
+            'INERT_MATERIALS': 0.01  # Waste material
         }
 
     def get_dynamic_fallback_prices(self) -> Dict[str, float]:
@@ -131,6 +135,7 @@ class UEXService:
     def get_best_selling_locations(self) -> Dict[str, Dict[str, str]]:
         """Get best selling locations for different materials."""
         return {
+            # Major ores (high-value)
             'QUANTAINIUM': {"location": "Orison", "system": "Stanton", "station": "Crusader"},
             'BEXALITE': {"location": "Area 18", "system": "Stanton", "station": "ArcCorp"},
             'BORASE': {"location": "Area 18", "system": "Stanton", "station": "ArcCorp"},
@@ -138,18 +143,35 @@ class UEXService:
             'LARANITE': {"location": "Port Olisar", "system": "Stanton", "station": "Crusader"},
             'AGRICIUM': {"location": "Area 18", "system": "Stanton", "station": "ArcCorp"},
             'HEPHAESTANITE': {"location": "Lorville", "system": "Stanton", "station": "Hurston"},
+            'RICCITE': {"location": "Orison", "system": "Stanton", "station": "Crusader"},
+            'STILERON': {"location": "Orison", "system": "Stanton", "station": "Crusader"},
+            'GOLDEN MEDMON': {"location": "Orison", "system": "Stanton", "station": "Crusader"},
+
+            # Gemstones (high-value)
             'HADANITE': {"location": "Area 18", "system": "Stanton", "station": "ArcCorp"},
+            'JANALITE': {"location": "New Babbage", "system": "Stanton", "station": "microTech"},
             'APHORITE': {"location": "Orison", "system": "Stanton", "station": "Crusader"},
             'DOLIVINE': {"location": "Lorville", "system": "Stanton", "station": "Hurston"},
-            'TITANIUM': {"location": "Area 18", "system": "Stanton", "station": "ArcCorp"},
             'DIAMOND': {"location": "Orison", "system": "Stanton", "station": "Crusader"},
+            'BERYL': {"location": "New Babbage", "system": "Stanton", "station": "microTech"},
+
+            # Common metals
+            'TITANIUM': {"location": "Area 18", "system": "Stanton", "station": "ArcCorp"},
             'GOLD': {"location": "Lorville", "system": "Stanton", "station": "Hurston"},
             'COPPER': {"location": "Area 18", "system": "Stanton", "station": "ArcCorp"},
-            'BERYL': {"location": "New Babbage", "system": "Stanton", "station": "microTech"},
             'TUNGSTEN': {"location": "Lorville", "system": "Stanton", "station": "Hurston"},
+            'ALUMINUM': {"location": "New Babbage", "system": "Stanton", "station": "microTech"},
+            'IRON': {"location": "Area 18", "system": "Stanton", "station": "ArcCorp"},
+            'TIN': {"location": "Lorville", "system": "Stanton", "station": "Hurston"},
+            'SILICON': {"location": "New Babbage", "system": "Stanton", "station": "microTech"},
+
+            # Low-value materials
             'CORUNDUM': {"location": "New Babbage", "system": "Stanton", "station": "microTech"},
             'QUARTZ': {"location": "Port Olisar", "system": "Stanton", "station": "Crusader"},
-            'ALUMINUM': {"location": "New Babbage", "system": "Stanton", "station": "microTech"},
+            'ASTATINE': {"location": "Area 18", "system": "Stanton", "station": "ArcCorp"},
+
+            # Special materials
+            'HEXAPOLYMESH COATING': {"location": "Orison", "system": "Stanton", "station": "Crusader"},
             'INERT_MATERIALS': {"location": "Any Location", "system": "Stanton", "station": "Any"}
         }
 

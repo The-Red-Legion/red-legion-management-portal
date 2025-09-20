@@ -470,26 +470,43 @@ export default {
     const loadingLocations = ref(false)
 
     const miningOreTypes = [
+      // Major ores (high-value)
       'QUANTAINIUM',
       'BEXALITE',
       'TARANITE',
       'BORASE',
       'LARANITE',
-      'TITANIUM',
-      'DIAMOND',
-      'GOLD',
-      'COPPER',
-      'BERYL',
-      'TUNGSTEN',
-      'CORUNDUM',
-      'QUARTZ',
-      'ALUMINIUM',
+      'AGRICIUM',
       'HEPHAESTANITE',
+      'RICCITE',
+      'STILERON',
+      'GOLDEN MEDMON',
+
+      // Gemstones (high-value)
       'HADANITE',
+      'JANALITE',
       'APHORITE',
       'DOLIVINE',
-      'AGRICIUM',
-      'RICCITE',
+      'DIAMOND',
+      'BERYL',
+
+      // Common metals
+      'TITANIUM',
+      'GOLD',
+      'COPPER',
+      'TUNGSTEN',
+      'ALUMINUM',
+      'IRON',
+      'TIN',
+      'SILICON',
+
+      // Low-value materials
+      'CORUNDUM',
+      'QUARTZ',
+      'ASTATINE',
+
+      // Special materials
+      'HEXAPOLYMESH COATING',
       'INERT_MATERIALS'
     ]
 
