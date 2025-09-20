@@ -47,8 +47,8 @@ jobs:
       run: |
         cd frontend
         npm ci
-        # Build without base path - main server will proxy /mgmt/ to root
-        npm run build
+        # Build with production environment to use absolute base URL
+        NODE_ENV=production npm run build
 
     - name: Create deployment package
       run: |
