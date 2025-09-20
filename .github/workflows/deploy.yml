@@ -99,9 +99,9 @@ jobs:
           sudo -u ubuntu python3 -m venv venv
           sudo -u ubuntu ./venv/bin/pip install -r requirements.txt
 
-          # Create environment file
+          # Create environment file with URL-encoded DATABASE_URL
           sudo tee /opt/red-legion-management-portal/.env > /dev/null <<EOF
-        DATABASE_URL='${{ secrets.DATABASE_URL }}'
+        DATABASE_URL='postgresql://arccorp_sys_admin:cFY%23Bh%2AO%3B%3CAM%3FlGvvyw%26IugwI8P%2C4%7B%3BB@10.92.0.3:5432/red_legion_arccorp_data_store'
         BOT_API_URL='${{ secrets.BOT_API_INTERNAL_URL }}'
         DOMAIN_NAME='${{ secrets.DOMAIN_NAME }}'
         DISCORD_CLIENT_ID='${{ secrets.DISCORD_CLIENT_ID }}'
@@ -171,8 +171,21 @@ jobs:
                 add_header Cache-Control \"public, immutable\";
             }
 
-            # API routes - proxy to FastAPI
-            location ~ ^/(api|auth|events|discord|uex-|trading-|material-|location-|admin|ping|health)/ {
+            # API routes - proxy to FastAPI with /api prefix stripped
+            location /api/ {
+                proxy_pass http://127.0.0.1:8000/;
+                proxy_http_version 1.1;
+                proxy_set_header Upgrade \$http_upgrade;
+                proxy_set_header Connection 'upgrade';
+                proxy_set_header Host \$host;
+                proxy_set_header X-Real-IP \$remote_addr;
+                proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+                proxy_set_header X-Forwarded-Proto \$scheme;
+                proxy_cache_bypass \$http_upgrade;
+            }
+
+            # Direct API routes (for backwards compatibility)
+            location ~ ^/(auth|events|discord|uex-|trading-|material-|location-|admin|ping|health)/ {
                 proxy_pass http://127.0.0.1:8000;
                 proxy_http_version 1.1;
                 proxy_set_header Upgrade \$http_upgrade;
