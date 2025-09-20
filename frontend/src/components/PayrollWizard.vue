@@ -277,12 +277,12 @@
             
             <div class="mt-3 text-center">
               <span class="text-space-gray-400 text-sm">
-                {{ Object.values(participantDonations).filter(d => d).length }} of {{ eventParticipants.length }} participants donating
+                {{ Object.values(participantDonations).filter(d => d).length }} of {{ (eventParticipants || []).length }} participants donating
               </span>
             </div>
           </div>
 
-          <div v-else-if="participantsLoaded && eventParticipants.length === 0" class="text-center py-8">
+          <div v-else-if="participantsLoaded && (eventParticipants || []).length === 0" class="text-center py-8">
             <div class="text-4xl mb-4">👥</div>
             <h4 class="text-white font-medium mb-2">No Participants Yet</h4>
             <p class="text-space-gray-400">No participants have been tracked for this event yet. Voice channel tracking may not have started or no one has joined the channels.</p>
@@ -344,7 +344,7 @@
                 <div class="text-space-gray-400 text-sm">Total SCU</div>
               </div>
               <div class="text-center">
-                <div class="text-2xl font-bold text-blue-500">{{ payrollResult.payouts.length }}</div>
+                <div class="text-2xl font-bold text-blue-500">{{ (payrollResult.payouts || []).length }}</div>
                 <div class="text-space-gray-400 text-sm">Participants</div>
               </div>
               <div class="text-center">
@@ -406,7 +406,7 @@
                   </tr>
                 </thead>
                 <tbody>
-                  <tr v-for="payout in payrollResult.payouts" :key="payout.user_id" class="border-b border-space-gray-700">
+                  <tr v-for="payout in (payrollResult.payouts || [])" :key="payout.user_id" class="border-b border-space-gray-700">
                     <td class="py-3 text-white">{{ payout.username }}</td>
                     <td class="py-3 text-right text-space-gray-300">{{ payout.participation_minutes }}m</td>
                     <td class="py-3 text-right text-space-gray-300">{{ (payout.participation_percentage || 0).toFixed(1) }}%</td>
@@ -874,7 +874,7 @@ export default {
         alert(`Payroll ${result.payroll_id} has been finalized and saved to database!\n\n` +
               `Event: ${selectedEvent.value.event_id}\n` +
               `Total Value: ${(payrollResult.value.total_value_auec || 0).toLocaleString()} aUEC\n` +
-              `Payouts: ${payrollResult.value.payouts.length} participants`)
+              `Payouts: ${(payrollResult.value.payouts || []).length} participants`)
         
         // Reset to home screen after successful archiving
         startOver()
