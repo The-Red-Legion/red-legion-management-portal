@@ -146,6 +146,7 @@ class PayrollCalculateRequest(BaseModel):
     ore_quantities: dict = Field(..., description="Ore type to SCU quantity mapping")
     donation_percentage: Optional[float] = Field(0, ge=0, le=100)
     custom_prices: Optional[dict] = Field({})
+    donating_users: Optional[List[str]] = Field([], description="List of user IDs who are donating their shares")
 
     @field_validator('ore_quantities')
     def validate_ore_quantities(cls, v):

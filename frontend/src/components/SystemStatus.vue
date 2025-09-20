@@ -62,7 +62,7 @@ export default {
 
     const fetchStatus = async () => {
       try {
-        const response = await fetch('/api/status')
+        const response = await fetch('/mgmt/api/status')
         if (response.ok) {
           status.value = await response.json()
           error.value = null
