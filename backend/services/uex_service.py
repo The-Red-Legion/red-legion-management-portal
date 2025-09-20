@@ -238,6 +238,20 @@ class UEXService:
             6: 0.80,    # Grim HEX - Lower outpost prices
             7: 0.88,    # Everus Harbor - Refinery station
             8: 0.87,    # Baijini Point - Orbital station
+            9: 0.89,    # Seraphim Station - Refinery station
+            # Stanton System - Lagrange Point Stations
+            13: 0.82,   # HUR-L1 - Rest stop pricing
+            14: 0.83,   # HUR-L2 - Rest stop pricing
+            15: 0.84,   # CRU-L1 - Rest stop pricing
+            16: 0.81,   # CRU-L4 - Rest stop pricing
+            17: 0.81,   # CRU-L5 - Rest stop pricing
+            18: 0.85,   # ARC-L1 - Rest stop pricing
+            19: 0.86,   # MIC-L1 - Rest stop pricing
+            # Stanton System - Security & Specialized Stations
+            20: 0.78,   # Security Post Kareah - Limited trading
+            21: 0.83,   # Covalex Shipping Hub - Logistics hub
+            22: 0.88,   # Tressler - Secondary orbital
+            23: 0.85,   # Ashland - Mining outpost pricing
             # Pyro System - Frontier pricing
             10: 0.75,   # Ruin Station - Lower frontier prices
             11: 0.70,   # Checkmate Co-op - Mining cooperative
@@ -256,9 +270,21 @@ class UEXService:
             6: "Grim HEX (Yela)",
             7: "Everus Harbor (Hurston)",
             8: "Baijini Point (microTech)",
+            9: "Seraphim Station (Crusader)",
             10: "Ruin Station (Pyro I)",
             11: "Checkmate Co-op (Pyro III)",
-            12: "Shady Glen (Pyro IV)"
+            12: "Shady Glen (Pyro IV)",
+            13: "HUR-L1 (Hurston L1)",
+            14: "HUR-L2 (Hurston L2)",
+            15: "CRU-L1 (Crusader L1)",
+            16: "CRU-L4 (Crusader L4)",
+            17: "CRU-L5 (Crusader L5)",
+            18: "ARC-L1 (ArcCorp L1)",
+            19: "MIC-L1 (microTech L1)",
+            20: "Security Post Kareah (Cellin)",
+            21: "Covalex Shipping Hub (Daymar)",
+            22: "Tressler (microTech)",
+            23: "Ashland (Aberdeen)"
         }
 
         location_name = location_names.get(location_id, f"Location {location_id}")
@@ -365,6 +391,104 @@ class UEXService:
                 "planet": "microTech",
                 "type": "Space Station",
                 "description": "microTech orbital station"
+            },
+            {
+                "id": 9,
+                "name": "Seraphim Station",
+                "system": "Stanton",
+                "planet": "Crusader",
+                "type": "Space Station",
+                "description": "Crusader orbital refinery station"
+            },
+            # Stanton System - Lagrange Point Stations
+            {
+                "id": 13,
+                "name": "HUR-L1",
+                "system": "Stanton",
+                "planet": "Hurston L1",
+                "type": "Lagrange Station",
+                "description": "Hurston-Crusader L1 rest stop"
+            },
+            {
+                "id": 14,
+                "name": "HUR-L2",
+                "system": "Stanton",
+                "planet": "Hurston L2",
+                "type": "Lagrange Station",
+                "description": "Hurston-ArcCorp L2 rest stop"
+            },
+            {
+                "id": 15,
+                "name": "CRU-L1",
+                "system": "Stanton",
+                "planet": "Crusader L1",
+                "type": "Lagrange Station",
+                "description": "Crusader-Hurston L1 rest stop"
+            },
+            {
+                "id": 16,
+                "name": "CRU-L4",
+                "system": "Stanton",
+                "planet": "Crusader L4",
+                "type": "Lagrange Station",
+                "description": "Crusader L4 rest stop"
+            },
+            {
+                "id": 17,
+                "name": "CRU-L5",
+                "system": "Stanton",
+                "planet": "Crusader L5",
+                "type": "Lagrange Station",
+                "description": "Crusader L5 rest stop"
+            },
+            {
+                "id": 18,
+                "name": "ARC-L1",
+                "system": "Stanton",
+                "planet": "ArcCorp L1",
+                "type": "Lagrange Station",
+                "description": "ArcCorp-microTech L1 rest stop"
+            },
+            {
+                "id": 19,
+                "name": "MIC-L1",
+                "system": "Stanton",
+                "planet": "microTech L1",
+                "type": "Lagrange Station",
+                "description": "microTech-ArcCorp L1 rest stop"
+            },
+            # Stanton System - Security & Outposts
+            {
+                "id": 20,
+                "name": "Security Post Kareah",
+                "system": "Stanton",
+                "planet": "Cellin (Crusader)",
+                "type": "Security Station",
+                "description": "High-security detention facility"
+            },
+            {
+                "id": 21,
+                "name": "Covalex Shipping Hub",
+                "system": "Stanton",
+                "planet": "Daymar (Crusader)",
+                "type": "Shipping Hub",
+                "description": "Covalex logistics station"
+            },
+            {
+                "id": 22,
+                "name": "Tressler",
+                "system": "Stanton",
+                "planet": "microTech",
+                "type": "Space Station",
+                "description": "microTech secondary orbital station"
+            },
+            {
+                "id": 23,
+                "name": "Ashland",
+                "system": "Stanton",
+                "planet": "Aberdeen (Hurston)",
+                "type": "Mining Outpost",
+                "description": "Aberdeen surface mining facility"
             },
             # Pyro System - Major Locations
             {
