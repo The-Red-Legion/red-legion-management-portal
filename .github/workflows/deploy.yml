@@ -47,8 +47,8 @@ jobs:
       run: |
         cd frontend
         npm ci
-        # Build with base path for reverse proxy deployment
-        npm run build -- --base=/mgmt/
+        # Build without base path since serving from root domain
+        npm run build
 
     - name: Create deployment package
       run: |
