@@ -57,6 +57,22 @@ export const apiService = {
     return response.data
   },
 
+  // Trading Locations
+  async getTradingLocations() {
+    const response = await api.get('/trading-locations')
+    return response.data
+  },
+
+  // Material Pricing
+  async getMaterialPrices(materialNames, locationId = null) {
+    const materialsParam = Array.isArray(materialNames) ? materialNames.join(',') : materialNames
+    const url = locationId
+      ? `/location-prices/${locationId}?materials=${encodeURIComponent(materialsParam)}`
+      : `/material-prices/${encodeURIComponent(materialsParam)}`
+    const response = await api.get(url)
+    return response.data
+  },
+
   // Health checks
   async ping() {
     const response = await api.get('/ping')

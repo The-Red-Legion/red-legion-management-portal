@@ -210,6 +210,101 @@ def get_fallback_uex_prices() -> Dict[str, float]:
         'APHORITE': 152.0
     }
 
+@app.get("/trading-locations")
+@app.get("/mgmt/api/trading-locations")
+async def get_trading_locations():
+    """Get trading locations for payroll calculator."""
+    try:
+        # Return common Star Citizen trading locations
+        # Orison should be the default option
+        return [
+            {
+                "id": "orison",
+                "name": "Orison",
+                "planet": "Crusader",
+                "system": "Stanton",
+                "is_default": True
+            },
+            {
+                "id": "area18",
+                "name": "Area 18",
+                "planet": "ArcCorp",
+                "system": "Stanton",
+                "is_default": False
+            },
+            {
+                "id": "lorville",
+                "name": "Lorville",
+                "planet": "Hurston",
+                "system": "Stanton",
+                "is_default": False
+            },
+            {
+                "id": "new_babbage",
+                "name": "New Babbage",
+                "planet": "microTech",
+                "system": "Stanton",
+                "is_default": False
+            }
+        ]
+    except Exception as e:
+        logger.error(f"Error fetching trading locations: {e}")
+        raise HTTPException(status_code=500, detail="Failed to fetch trading locations")
+
+@app.get("/material-prices/{materials}")
+@app.get("/mgmt/api/material-prices/{materials}")
+async def get_material_prices(materials: str):
+    """Get material prices for specified materials."""
+    try:
+        # Parse the materials parameter
+        material_names = [name.strip().upper() for name in materials.split(',')]
+
+        # Get UEX prices
+        uex_prices = get_fallback_uex_prices()
+
+        # Filter for requested materials
+        filtered_prices = {}
+        for material in material_names:
+            if material in uex_prices:
+                filtered_prices[material] = uex_prices[material]
+
+        return filtered_prices
+    except Exception as e:
+        logger.error(f"Error fetching material prices for {materials}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to fetch material prices")
+
+@app.get("/location-prices/{location_id}")
+@app.get("/mgmt/api/location-prices/{location_id}")
+async def get_location_prices(location_id: str, materials: str = ""):
+    """Get location-specific material prices."""
+    try:
+        # Parse the materials parameter
+        material_names = [name.strip().upper() for name in materials.split(',') if name.strip()]
+
+        # Get base UEX prices
+        base_prices = get_fallback_uex_prices()
+
+        # Apply location modifiers (simplified for now)
+        location_modifiers = {
+            "orison": 1.0,     # Base prices
+            "area18": 0.95,    # Slightly lower
+            "lorville": 0.92,  # Lower prices
+            "new_babbage": 0.98  # Slightly lower
+        }
+
+        modifier = location_modifiers.get(location_id.lower(), 1.0)
+
+        # Filter for requested materials and apply location modifier
+        filtered_prices = {}
+        for material in material_names:
+            if material in base_prices:
+                filtered_prices[material] = round(base_prices[material] * modifier, 2)
+
+        return filtered_prices
+    except Exception as e:
+        logger.error(f"Error fetching location prices for {location_id}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to fetch location prices")
+
 # Startup/shutdown events
 @app.on_event("startup")
 async def startup_event():
