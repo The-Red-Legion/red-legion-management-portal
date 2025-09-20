@@ -143,12 +143,12 @@ async def get_event_participants(event_id: str):
 
         async with pool.acquire() as conn:
             participants = await conn.fetch("""
-                SELECT
+                SELECT DISTINCT ON (user_id)
                     id as participant_id, user_id, username, display_name,
                     joined_at, left_at, duration_minutes, is_org_member as is_organizer
                 FROM participation
                 WHERE event_id = $1
-                ORDER BY joined_at ASC
+                ORDER BY user_id, joined_at ASC
             """, event_id)
 
             return [dict(participant) for participant in participants]
