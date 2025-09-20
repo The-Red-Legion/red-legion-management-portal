@@ -80,6 +80,7 @@ app.add_middleware(
 
 # Health check endpoints
 @app.get("/ping")
+@app.get("/mgmt/api/ping")
 async def ping():
     """Simple health check."""
     return {
@@ -89,6 +90,7 @@ async def ping():
     }
 
 @app.get("/health")
+@app.get("/mgmt/api/health")
 async def health_check():
     """Detailed health check."""
     pool = await get_db_pool()
@@ -102,6 +104,7 @@ async def health_check():
 
 # Events endpoints
 @app.get("/events")
+@app.get("/mgmt/api/events")
 async def get_events(request: Request):
     """Get all mining events from database."""
     try:
@@ -115,7 +118,7 @@ async def get_events(request: Request):
                     event_id, event_name, event_type, organizer_name, organizer_id,
                     status, started_at, ended_at, created_at, updated_at,
                     total_participants, total_duration_minutes,
-                    location_notes, additional_notes
+                    location_notes, description as additional_notes
                 FROM events
                 ORDER BY created_at DESC
             """)
@@ -124,9 +127,10 @@ async def get_events(request: Request):
 
     except Exception as e:
         logger.error(f"Error fetching events: {e}")
-        raise HTTPException(status_code=500, detail="Failed to fetch events")
+        raise HTTPException(status_code=500, detail=f"Failed to fetch events: {str(e)}")
 
 @app.get("/events/{event_id}/participants")
+@app.get("/mgmt/api/events/{event_id}/participants")
 async def get_event_participants(event_id: str):
     """Get participants for a specific event."""
     event_id = validate_event_id(event_id)
@@ -139,9 +143,9 @@ async def get_event_participants(event_id: str):
         async with pool.acquire() as conn:
             participants = await conn.fetch("""
                 SELECT
-                    participant_id, user_id, username, display_name,
-                    joined_at, left_at, duration_minutes, is_organizer
-                FROM participants
+                    id as participant_id, user_id, username, display_name,
+                    joined_at, left_at, duration_minutes, is_org_member as is_organizer
+                FROM participation
                 WHERE event_id = $1
                 ORDER BY joined_at ASC
             """, event_id)
@@ -153,6 +157,7 @@ async def get_event_participants(event_id: str):
         raise HTTPException(status_code=500, detail="Failed to fetch participants")
 
 @app.get("/uex-prices")
+@app.get("/mgmt/api/uex-prices")
 async def get_uex_prices_endpoint():
     """Get current UEX ore prices."""
     try:
