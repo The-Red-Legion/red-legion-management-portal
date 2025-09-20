@@ -791,7 +791,26 @@ export default {
           prices,
           donatingUsers
         )
-        
+
+        // Transform the backend response to match frontend expectations
+        if (result.participants) {
+          // Transform participants to payouts format
+          result.payouts = result.participants.map(participant => ({
+            user_id: participant.user_id,
+            username: participant.username,
+            display_name: participant.display_name,
+            participation_minutes: participant.duration_minutes,
+            participation_percentage: participant.duration_minutes ?
+              (participant.duration_minutes / result.total_duration_minutes * 100) : 0,
+            final_payout_auec: participant.payout || 0,
+            is_donating: participant.is_donating || false
+          }))
+
+          // Set total value from backend calculation
+          result.total_value_auec = result.total_payout || 0
+          result.total_scu = Object.values(oreQuantities.value).reduce((sum, qty) => sum + (qty || 0), 0)
+        }
+
         payrollResult.value = result
       } catch (error) {
         console.error('Payroll calculation failed:', error)
