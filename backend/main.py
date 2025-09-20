@@ -449,14 +449,17 @@ async def calculate_payroll(event_id: str, request: PayrollCalculateRequest):
 
         # Calculate summary
         total_payouts = sum(p['final_payout'] for p in payouts)
+        total_scu = sum(request.ore_quantities.values())
 
         result = {
             "event_id": event_id,
             "event_name": event['event_name'],
             "calculation_timestamp": datetime.now(timezone.utc).isoformat(),
             "total_ore_value_auec": round(total_ore_value, 2),
+            "total_value_auec": round(total_ore_value, 2),  # Frontend compatibility
             "total_donated_auec": round(total_donated, 2),
             "total_payouts_auec": round(total_payouts, 2),
+            "total_scu": round(total_scu, 2),  # Add total SCU for frontend
             "ore_breakdown": ore_breakdown,
             "payouts": payouts,
             "summary": {
@@ -472,6 +475,152 @@ async def calculate_payroll(event_id: str, request: PayrollCalculateRequest):
     except Exception as e:
         logger.error(f"Error calculating payroll for {event_id}: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to calculate payroll: {str(e)}")
+
+@app.post("/payroll/{event_id}/finalize")
+@app.post("/mgmt/api/payroll/{event_id}/finalize")
+async def finalize_payroll(event_id: str, request: PayrollCalculateRequest):
+    """Finalize and save payroll to database."""
+    try:
+        # For now, this will be the same as calculate but could store to database
+        # In a real implementation, this would save the payroll results
+        result = await calculate_payroll(event_id, request)
+
+        # Add a payroll_id for the response
+        result["payroll_id"] = f"payroll-{event_id}-{datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S')}"
+        result["status"] = "finalized"
+
+        return result
+
+    except Exception as e:
+        logger.error(f"Error finalizing payroll for {event_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to finalize payroll: {str(e)}")
+
+@app.get("/admin/payroll-export/{event_id}")
+@app.get("/mgmt/api/admin/payroll-export/{event_id}")
+async def export_payroll(event_id: str):
+    """Export payroll as PDF (placeholder implementation)."""
+    try:
+        # For now, return a placeholder response
+        # In a real implementation, this would generate a PDF
+        return {
+            "export_url": f"/downloads/payroll-{event_id}.pdf",
+            "filename": f"payroll-{event_id}.pdf",
+            "status": "generated",
+            "message": "PDF export functionality is not implemented yet"
+        }
+
+    except Exception as e:
+        logger.error(f"Error exporting payroll for {event_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to export payroll: {str(e)}")
+
+@app.post("/events/{event_id}/close")
+@app.post("/mgmt/api/events/{event_id}/close")
+async def close_event(event_id: str):
+    """Close an active mining event."""
+    try:
+        event_id = validate_event_id(event_id)
+
+        pool = await get_db_pool()
+        if pool is None:
+            raise HTTPException(status_code=500, detail="Database connection failed")
+
+        async with pool.acquire() as conn:
+            # Update event to closed status
+            result = await conn.execute("""
+                UPDATE events
+                SET status = 'closed',
+                    ended_at = NOW(),
+                    updated_at = NOW()
+                WHERE event_id = $1 AND status = 'open'
+            """, event_id)
+
+            if result == "UPDATE 0":
+                raise HTTPException(status_code=404, detail="Event not found or already closed")
+
+            # Get updated event info
+            event = await conn.fetchrow("""
+                SELECT event_id, event_name, total_participants, total_duration_minutes, status, ended_at
+                FROM events
+                WHERE event_id = $1
+            """, event_id)
+
+            return {
+                "event_id": event_id,
+                "status": "closed",
+                "ended_at": event['ended_at'].isoformat() if event['ended_at'] else None,
+                "total_participants": event['total_participants'] or 0,
+                "total_duration_minutes": event['total_duration_minutes'] or 0,
+                "message": f"Event {event_id} has been closed successfully"
+            }
+
+    except Exception as e:
+        logger.error(f"Error closing event {event_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to close event: {str(e)}")
+
+@app.get("/payroll/{event_id}/export")
+@app.get("/mgmt/api/payroll/{event_id}/export")
+async def export_payroll(event_id: str):
+    """Export payroll data for an event (placeholder for PDF generation)."""
+    try:
+        event_id = validate_event_id(event_id)
+
+        pool = await get_db_pool()
+        if pool is None:
+            raise HTTPException(status_code=500, detail="Database connection failed")
+
+        async with pool.acquire() as conn:
+            # Get event details
+            event = await conn.fetchrow("""
+                SELECT event_id, event_name, status, created_at, ended_at,
+                       total_participants, total_duration_minutes
+                FROM events
+                WHERE event_id = $1
+            """, event_id)
+
+            if not event:
+                raise HTTPException(status_code=404, detail="Event not found")
+
+            # Get payroll data
+            payroll_data = await conn.fetch("""
+                SELECT user_id, username, participation_minutes,
+                       participation_percentage, final_payout_auec
+                FROM payroll_sessions
+                WHERE event_id = $1
+                ORDER BY final_payout_auec DESC
+            """, event_id)
+
+            # Calculate totals
+            total_payout = sum(p['final_payout_auec'] for p in payroll_data if p['final_payout_auec'])
+            total_participants = len(payroll_data)
+
+            export_data = {
+                "event_id": event_id,
+                "event_name": event['event_name'],
+                "status": event['status'],
+                "created_at": event['created_at'].isoformat() if event['created_at'] else None,
+                "ended_at": event['ended_at'].isoformat() if event['ended_at'] else None,
+                "total_participants": total_participants,
+                "total_payout_auec": total_payout,
+                "participants": [
+                    {
+                        "user_id": p['user_id'],
+                        "username": p['username'],
+                        "participation_minutes": p['participation_minutes'] or 0,
+                        "participation_percentage": round(p['participation_percentage'] or 0, 2),
+                        "final_payout_auec": int(p['final_payout_auec'] or 0)
+                    }
+                    for p in payroll_data
+                ],
+                "export_timestamp": datetime.now().isoformat(),
+                "pdf_url": f"/payroll/{event_id}/export.pdf"  # Placeholder for future PDF endpoint
+            }
+
+            logger.info(f"Exported payroll data for event {event_id}: {total_participants} participants, {total_payout:,} aUEC total")
+            return export_data
+
+    except Exception as e:
+        logger.error(f"Error exporting payroll for event {event_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to export payroll: {str(e)}")
 
 # Startup/shutdown events
 @app.on_event("startup")

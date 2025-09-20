@@ -83,6 +83,28 @@ export const apiService = {
     return response.data
   },
 
+  // Payroll finalization
+  async finalizePayroll(eventId, oreQuantities, customPrices = null, donatingUsers = []) {
+    const response = await api.post(`/payroll/${eventId}/finalize`, {
+      ore_quantities: oreQuantities,
+      custom_prices: customPrices,
+      donating_users: donatingUsers
+    })
+    return response.data
+  },
+
+  // Payroll export
+  async exportPayroll(eventId) {
+    const response = await api.get(`/payroll/${eventId}/export`)
+    return response.data
+  },
+
+  // Event management
+  async closeEvent(eventId) {
+    const response = await api.post(`/events/${eventId}/close`)
+    return response.data
+  },
+
   // Health checks
   async ping() {
     const response = await api.get('/ping')
@@ -113,7 +135,7 @@ export const apiService = {
     throw new Error('Admin functions not available in no-auth mode')
   },
 
-  async exportPayroll(eventId) {
+  async exportPayrollAdmin(eventId) {
     throw new Error('Admin functions not available in no-auth mode')
   }
 }
