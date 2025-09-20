@@ -55,12 +55,12 @@ async def get_discord_channels_endpoint(guild_id: str = "814699481912049704"):
                         "message": "Discord bot unavailable - using database channels"
                     }
 
-        # No Discord connection and no database - return empty
-        logger.warning("⚠️ No Discord connection available")
+        # No Discord connection and no database - return empty with clear error
+        logger.error("❌ No Discord bot connection and no database channels available")
         return {
             "channels": [],
-            "source": "none",
-            "message": "Discord channels unavailable - bot not connected"
+            "source": "unavailable",
+            "message": "Discord bot is offline and no database backup available"
         }
 
     except Exception as e:
