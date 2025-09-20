@@ -1,0 +1,138 @@
+name: Remove Management Portal from VM
+
+on:
+  workflow_dispatch:  # Manual trigger only
+    inputs:
+      vm_name:
+        description: 'VM instance name to clean up'
+        required: true
+        default: 'arccorp-web-server'
+        type: string
+      zone:
+        description: 'GCP zone where the VM is located'
+        required: true
+        default: 'us-central1-a'
+        type: string
+      confirm_removal:
+        description: 'Type "REMOVE" to confirm complete removal'
+        required: true
+        type: string
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    name: Remove Management Portal from VM
+
+    steps:
+    - name: Validate confirmation
+      run: |
+        if [ "${{ github.event.inputs.confirm_removal }}" != "REMOVE" ]; then
+          echo "ERROR: You must type 'REMOVE' to confirm the cleanup operation"
+          exit 1
+        fi
+        echo "Confirmation validated. Proceeding with cleanup..."
+
+    - name: Authenticate to Google Cloud
+      uses: google-github-actions/auth@v1
+      with:
+        credentials_json: ${{ secrets.GCP_CREDENTIALS }}
+
+    - name: Setup Google Cloud SDK
+      uses: google-github-actions/setup-gcloud@v1
+      with:
+        project_id: ${{ secrets.GCP_PROJECT_ID }}
+
+    - name: Verify VM exists and get status
+      run: |
+        echo "=== VM Information ==="
+        gcloud compute instances describe ${{ github.event.inputs.vm_name }} --zone ${{ github.event.inputs.zone }} --format="table(name,status,machineType.scope(machineTypes),networkInterfaces[0].accessConfigs[0].natIP:label=EXTERNAL_IP)"
+
+        echo ""
+        echo "=== Current VM Memory Usage ==="
+        gcloud compute ssh ubuntu@${{ github.event.inputs.vm_name }} --zone ${{ github.event.inputs.zone }} --command "
+          echo 'Memory before cleanup:'
+          free -h
+          echo ''
+          echo 'Services related to red-legion:'
+          systemctl list-units --state=active | grep red-legion || echo 'No red-legion services found'
+        " --ssh-flag="-o ConnectTimeout=10" || echo "Could not get current status (VM may be under heavy load)"
+
+    - name: Complete Management Portal Removal
+      run: |
+        echo "=== Removing Management Portal from ${{ github.event.inputs.vm_name }} ==="
+        gcloud compute ssh ubuntu@${{ github.event.inputs.vm_name }} --zone ${{ github.event.inputs.zone }} --command "
+          set -e
+
+          echo 'Step 1: Stop and disable all red-legion services...'
+          sudo systemctl stop red-legion-management-portal-backend 2>/dev/null || echo 'Backend service not running'
+          sudo systemctl stop red-legion-management-portal-frontend 2>/dev/null || echo 'Frontend service not running'
+          sudo systemctl disable red-legion-management-portal-backend 2>/dev/null || echo 'Backend service not found'
+          sudo systemctl disable red-legion-management-portal-frontend 2>/dev/null || echo 'Frontend service not found'
+
+          echo 'Step 2: Remove systemd service files...'
+          sudo rm -f /etc/systemd/system/red-legion-management-portal-*.service
+          sudo systemctl daemon-reload
+
+          echo 'Step 3: Kill any remaining red-legion processes...'
+          sudo pkill -f 'red-legion' || echo 'No processes found'
+          sleep 2
+          sudo pkill -9 -f 'red-legion' || echo 'No processes to force kill'
+
+          echo 'Step 4: Remove application directories...'
+          sudo rm -rf /opt/red-legion-management-portal/
+          sudo rm -rf /tmp/red-legion-*
+
+          echo 'Step 5: Clean up logs...'
+          sudo rm -f /var/log/red-legion-*
+          sudo journalctl --vacuum-time=1d
+
+          echo 'Step 6: Remove any cron jobs...'
+          sudo crontab -l | grep -v red-legion | sudo crontab - 2>/dev/null || echo 'No cron jobs to clean'
+
+          echo 'Step 7: Clean up nginx configuration if it exists...'
+          if [ -f /etc/nginx/sites-available/red-legion-management ]; then
+            sudo rm -f /etc/nginx/sites-available/red-legion-management
+            sudo rm -f /etc/nginx/sites-enabled/red-legion-management
+            sudo nginx -t && sudo systemctl reload nginx || echo 'Nginx reload failed or not installed'
+          fi
+
+          echo 'Management portal completely removed!'
+        " --ssh-flag="-o ConnectTimeout=30"
+
+    - name: Verify cleanup and show resource status
+      run: |
+        echo "=== Cleanup Verification ==="
+        gcloud compute ssh ubuntu@${{ github.event.inputs.vm_name }} --zone ${{ github.event.inputs.zone }} --command "
+          echo 'Memory after cleanup:'
+          free -h
+          echo ''
+          echo 'Disk space:'
+          df -h /
+          echo ''
+          echo 'Services check:'
+          systemctl list-units --state=active | grep red-legion || echo 'No red-legion services found (good!)'
+          echo ''
+          echo 'Process check:'
+          ps aux | grep red-legion | grep -v grep || echo 'No red-legion processes found (good!)'
+          echo ''
+          echo 'Directory check:'
+          ls -la /opt/ | grep red-legion || echo 'No red-legion directories found (good!)'
+          echo ''
+          echo 'Systemd services check:'
+          sudo systemctl list-unit-files | grep red-legion || echo 'No red-legion systemd services found (good!)'
+        " --ssh-flag="-o ConnectTimeout=15"
+
+    - name: Summary
+      run: |
+        echo "🎉 Management Portal Cleanup Complete!"
+        echo ""
+        echo "What was removed from ${{ github.event.inputs.vm_name }}:"
+        echo "- All red-legion systemd services"
+        echo "- Application directory (/opt/red-legion-management-portal/)"
+        echo "- Service files and configuration"
+        echo "- Running processes"
+        echo "- Log files"
+        echo "- Nginx configuration (if present)"
+        echo ""
+        echo "The VM should now have significantly more available resources."
+        echo "SSH connectivity should be improved if it was experiencing issues."
