@@ -14,7 +14,11 @@ import httpx
 from dotenv import load_dotenv
 from typing import List, Dict, Optional, Any
 import logging
+import random
+import string
+import uuid
 from datetime import datetime, timedelta, timezone
+import json
 from validation import (
     validate_discord_id, validate_event_id, validate_text_input,
     validate_positive_integer, validate_decimal_amount,
@@ -24,6 +28,32 @@ from validation import (
 
 # Load environment variables
 load_dotenv()
+
+# Pydantic models for admin functions
+class EventCreationRequest(BaseModel):
+    event_name: str = Field(..., min_length=3, max_length=100, description="Event name")
+    organizer_name: str = Field(..., min_length=2, max_length=50, description="Organizer name")
+    organizer_id: Optional[str] = Field(None, pattern=r'^\d{17,19}$', description="Discord organizer ID")
+    guild_id: Optional[str] = Field("814699481912049704", pattern=r'^\d{17,19}$', description="Discord guild ID")
+    event_type: str = Field("mining", pattern=r'^(mining|salvage|combat|training)$', description="Event type")
+    location_notes: Optional[str] = Field(None, max_length=500, description="Location notes")
+    session_notes: Optional[str] = Field(None, max_length=1000, description="Session notes")
+    scheduled_start_time: Optional[datetime] = Field(None, description="Scheduled start time")
+    auto_start_enabled: bool = Field(False, description="Auto-start enabled")
+    tracked_channels: Optional[List[Dict[str, Any]]] = Field(None, description="Tracked Discord channels")
+    primary_channel_id: Optional[int] = Field(None, ge=100000000000000000, le=999999999999999999, description="Primary Discord channel ID")
+
+    @field_validator('tracked_channels')
+    def validate_tracked_channels(cls, v):
+        if v is not None:
+            if len(v) > 20:
+                raise ValueError("Too many tracked channels (max 20)")
+            for channel in v:
+                if not isinstance(channel, dict):
+                    raise ValueError("Each tracked channel must be a dictionary")
+                if 'id' not in channel or 'name' not in channel:
+                    raise ValueError("Each tracked channel must have 'id' and 'name' fields")
+        return v
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -733,6 +763,356 @@ async def get_payroll_summary(event_id: str):
     except Exception as e:
         logger.error(f"Error getting payroll summary for event {event_id}: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to get payroll summary: {str(e)}")
+
+# Admin Functions
+@app.post("/admin/create-test-event/{event_type}")
+@app.post("/mgmt/api/admin/create-test-event/{event_type}")
+async def create_test_event(event_type: str):
+    """Create a test event with random participants and data."""
+    if event_type not in ["mining", "salvage"]:
+        raise HTTPException(status_code=400, detail="Event type must be 'mining' or 'salvage'")
+
+    try:
+        pool = await get_db_pool()
+        if pool is None:
+            # Return mock success response when database is not available
+            event_id = f'test_{uuid.uuid4().hex[:8]}'
+            num_participants = random.randint(5, 25)
+            duration_hours = random.randint(1, 7)
+            event_name = f'Test {event_type.title()} Op {random.randint(100, 999)}'
+
+            return {
+                'success': True,
+                'message': f'Test {event_type} event created successfully (mock mode)',
+                'event': {
+                    'event_id': event_id,
+                    'event_name': event_name,
+                    'event_type': event_type,
+                    'organizer_name': 'TestBot',
+                    'participants': num_participants,
+                    'duration_hours': duration_hours,
+                    'status': 'completed'
+                }
+            }
+
+        async with pool.acquire() as conn:
+            async with conn.transaction():
+                # Generate random event data
+                event_id = generate_event_id()
+                num_participants = random.randint(5, 25)
+                duration_hours = random.randint(1, 7)
+                duration_minutes = duration_hours * 60
+
+                # Random start time between 1-30 days ago
+                days_ago = random.randint(1, 30)
+                started_at = datetime.utcnow() - timedelta(days=days_ago)
+                ended_at = started_at + timedelta(hours=duration_hours)
+
+                event_name = f"Test {event_type.title()} Op {random.randint(100, 999)}"
+
+                # Generate realistic organizer data
+                test_display_names = [
+                    "NewSticks", "Saladin80", "Tealstone", "LowNslow", "Ferny133",
+                    "Jaeger31", "Blitz0117", "Prometheus114", "RockHound", "CrystalCrafter",
+                    "VoidRunner", "AsteroidAce", "QuantumMiner", "StellarSalvage",
+                    "SpaceRanger", "CosmicCrawler", "MetalHarvester", "SystemScanner"
+                ]
+                organizer_name = random.choice(test_display_names)
+                organizer_id = random.randint(100000000000000000, 999999999999999999)
+
+                # Create the event
+                await conn.execute("""
+                    INSERT INTO events (
+                        event_id, event_type, event_name, organizer_name, organizer_id,
+                        guild_id, started_at, ended_at, status, total_participants,
+                        total_duration_minutes, created_at
+                    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+                """,
+                    event_id, event_type, event_name, organizer_name, organizer_id,
+                    814699481912049704, started_at, ended_at, 'closed', num_participants,
+                    duration_minutes, datetime.utcnow()
+                )
+
+                # Generate random participants
+                fake_users = await generate_fake_participants(num_participants)
+                total_participation_time = 0
+
+                for user in fake_users:
+                    # Random participation time (15-240 minutes)
+                    participation_minutes = random.randint(15, min(240, duration_minutes))
+                    total_participation_time += participation_minutes
+
+                    # Random join time within event duration
+                    max_join_offset = max(1, duration_minutes - participation_minutes)
+                    join_offset = random.randint(0, max_join_offset)
+                    joined_at = started_at + timedelta(minutes=join_offset)
+                    left_at = joined_at + timedelta(minutes=participation_minutes)
+
+                    await conn.execute("""
+                        INSERT INTO participation (
+                            event_id, user_id, username, display_name, joined_at, left_at,
+                            was_active, duration_minutes, created_at
+                        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+                    """,
+                        event_id, user['user_id'], user['username'], user['display_name'],
+                        joined_at, left_at, True, participation_minutes, datetime.utcnow()
+                    )
+
+                # Update event totals
+                await conn.execute("""
+                    UPDATE events
+                    SET total_participants = $1, total_duration_minutes = $2
+                    WHERE event_id = $3
+                """, num_participants, total_participation_time, event_id)
+
+                logger.info(f"Created test {event_type} event {event_id} with {num_participants} participants")
+
+                # Return event details
+                event_data = await conn.fetchrow("""
+                    SELECT * FROM events WHERE event_id = $1
+                """, event_id)
+
+                return {
+                    "success": True,
+                    "message": f"Test {event_type} event created successfully",
+                    "event": dict(event_data)
+                }
+
+    except Exception as e:
+        logger.error(f"Error creating test {event_type} event: {e}")
+        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+
+def generate_event_id():
+    """Generate event ID matching pattern used by payroll system: sm-[a-z0-9]{6}"""
+    suffix = ''.join(random.choices(string.ascii_lowercase + string.digits, k=6))
+    return f"sm-{suffix}"
+
+async def generate_fake_participants(count: int):
+    """Generate fake participant data for testing."""
+    fake_usernames = [
+        "MinerAlpha", "SalvageKing", "RedLegionPilot", "SpaceRanger", "StarCollector",
+        "OreMaster", "QuantumMiner", "AsteroidHunter", "CrystalSeeker", "VoidRunner",
+        "DeepSpaceMiner", "StellarSalvage", "GalaxyHarvester", "NebulaNavigator",
+        "CosmicCrawler", "PlanetaryProspector", "InterstellarMiner", "SpacePirate",
+        "RockHound", "CrystalCrafter", "MetalHarvester", "ElementExtractor",
+        "QuantumScavenger", "AsteroidAce", "SystemScanner", "ResourceRaider"
+    ]
+
+    fake_display_names = [
+        "Alpha Miner", "The Salvage King", "Red Legion Elite", "Space Ranger X",
+        "Crystal Collector", "Ore Master Pro", "Quantum Explorer", "Asteroid Hunter",
+        "Crystal Seeker", "Void Runner", "Deep Space Miner", "Stellar Salvage",
+        "Galaxy Harvester", "Nebula Navigator", "Cosmic Crawler", "Planetary Prospector",
+        "Interstellar Miner", "Space Pirate", "Rock Hound", "Crystal Crafter"
+    ]
+
+    participants = []
+    used_names = set()
+
+    for i in range(count):
+        # Ensure unique usernames
+        username = random.choice(fake_usernames)
+        counter = 1
+        original_username = username
+        while username in used_names:
+            username = f"{original_username}{counter}"
+            counter += 1
+        used_names.add(username)
+
+        display_name = random.choice(fake_display_names)
+        user_id = random.randint(100000000000000000, 999999999999999999)
+
+        participants.append({
+            'user_id': user_id,
+            'username': username,
+            'display_name': display_name
+        })
+
+    return participants
+
+@app.delete("/admin/events/{event_id}")
+@app.delete("/mgmt/api/admin/events/{event_id}")
+async def delete_event(event_id: str):
+    """Delete an event and all associated data."""
+    try:
+        event_id = validate_event_id(event_id)
+
+        pool = await get_db_pool()
+        if pool is None:
+            raise HTTPException(status_code=500, detail="Database connection failed")
+
+        async with pool.acquire() as conn:
+            # Start a transaction
+            async with conn.transaction():
+                # Check if event exists
+                event = await conn.fetchrow(
+                    "SELECT event_id FROM events WHERE event_id = $1",
+                    event_id
+                )
+
+                if not event:
+                    raise HTTPException(status_code=404, detail="Event not found")
+
+                # Delete associated data in correct order (respecting foreign key constraints)
+
+                # 1. Delete payouts (references payrolls)
+                await conn.execute(
+                    "DELETE FROM payouts WHERE payroll_id IN (SELECT payroll_id FROM payrolls WHERE event_id = $1)",
+                    event_id
+                )
+
+                # 2. Delete payrolls (references events)
+                await conn.execute(
+                    "DELETE FROM payrolls WHERE event_id = $1",
+                    event_id
+                )
+
+                # 3. Delete participation records (references events)
+                await conn.execute(
+                    "DELETE FROM participation WHERE event_id = $1",
+                    event_id
+                )
+
+                # 4. Delete salvage inventory if it exists (references events)
+                await conn.execute(
+                    "DELETE FROM salvage_inventory WHERE event_id = $1",
+                    event_id
+                )
+
+                # 5. Finally delete the event itself
+                await conn.execute(
+                    "DELETE FROM events WHERE event_id = $1",
+                    event_id
+                )
+
+                logger.info(f"Successfully deleted event {event_id} and all associated data")
+                return {"success": True, "message": f"Event {event_id} deleted successfully"}
+
+    except HTTPException:
+        raise  # Re-raise HTTP exceptions
+    except Exception as e:
+        logger.error(f"Error deleting event {event_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+
+@app.post("/admin/refresh-uex-cache")
+@app.post("/mgmt/api/admin/refresh-uex-cache")
+async def refresh_uex_cache():
+    """Force refresh of UEX price cache via bot API."""
+    logger.info("🔄 Manual UEX cache refresh requested")
+    try:
+        # Try to trigger cache refresh via the bot API
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.post(f"{BOT_API_URL}/api/refresh-uex-cache")
+            if response.status_code == 200:
+                refresh_data = response.json()
+                logger.info("✅ Successfully triggered UEX cache refresh via bot API")
+                return {
+                    "success": True,
+                    "message": "UEX cache refresh triggered via bot API",
+                    "bot_response": refresh_data,
+                    "timestamp": datetime.now().isoformat()
+                }
+            else:
+                logger.warning(f"⚠️ Bot API refresh endpoint returned {response.status_code}: {response.text}")
+                return {
+                    "success": False,
+                    "error": f"Bot API returned {response.status_code}: {response.text}",
+                    "timestamp": datetime.now().isoformat()
+                }
+    except Exception as e:
+        logger.error(f"❌ Could not trigger UEX cache refresh via bot API: {e}")
+        return {
+            "success": False,
+            "error": f"Failed to communicate with bot API: {str(e)}",
+            "fallback_note": "UEX cache refresh must be done manually on the bot server",
+            "timestamp": datetime.now().isoformat()
+        }
+
+@app.post("/events/create")
+@app.post("/mgmt/api/events/create")
+async def create_event(request: EventCreationRequest):
+    """Create a new event compatible with payroll system (no-auth version)."""
+    try:
+        pool = await get_db_pool()
+        if pool is None:
+            # Return mock success response when database is not available
+            return {
+                'event_id': f'evt_{uuid.uuid4().hex[:8]}',
+                'event_name': request.event_name,
+                'organizer_name': request.organizer_name,
+                'event_type': request.event_type,
+                'started_at': datetime.now().isoformat(),
+                'ended_at': None,
+                'status': 'active',
+                'scheduled_start_time': request.scheduled_start_time.isoformat() if request.scheduled_start_time else None,
+                'auto_start_enabled': request.auto_start_enabled,
+                'tracked_channels': request.tracked_channels,
+                'primary_channel_id': request.primary_channel_id,
+                'event_status': 'live' if request.scheduled_start_time is None else 'scheduled',
+                'message': 'Event created successfully (mock mode)'
+            }
+
+        async with pool.acquire() as conn:
+            # Generate event ID matching the database constraint: [a-z]{2,4}-[a-z0-9]{6}
+            event_id = f"web-{''.join(random.choices(string.ascii_lowercase + string.digits, k=6))}"
+
+            # Normalize scheduled_start_time to handle timezone-aware datetimes
+            scheduled_start_time = None
+            if request.scheduled_start_time is not None:
+                if request.scheduled_start_time.tzinfo is not None:
+                    # Convert timezone-aware datetime to UTC and make it naive
+                    scheduled_start_time = request.scheduled_start_time.astimezone(timezone.utc).replace(tzinfo=None)
+                else:
+                    # Already timezone-naive
+                    scheduled_start_time = request.scheduled_start_time
+
+            # Insert new event
+            await conn.execute("""
+                INSERT INTO events (
+                    event_id, event_type, event_name, organizer_name, organizer_id,
+                    guild_id, started_at, status, location_notes, description, created_at,
+                    scheduled_start_time, auto_start_enabled, tracked_channels, primary_channel_id, event_status
+                ) VALUES ($1, $2, $3, $4, $5, $6, NOW(), 'open', $7, $8, NOW(), $9, $10, $11, $12, $13)
+            """,
+                event_id,
+                request.event_type,
+                request.event_name,
+                request.organizer_name,
+                int(request.organizer_id) if request.organizer_id else 0,
+                int(request.guild_id),
+                request.location_notes,
+                request.session_notes,
+                scheduled_start_time,
+                request.auto_start_enabled,
+                json.dumps(request.tracked_channels) if request.tracked_channels else None,
+                request.primary_channel_id,
+                'live' if scheduled_start_time is None else 'scheduled'
+            )
+
+            # Fetch the created event
+            event_data = await conn.fetchrow("""
+                SELECT event_id, event_name, organizer_name, started_at, status,
+                       location_notes, description, event_type, organizer_id,
+                       scheduled_start_time, auto_start_enabled, tracked_channels,
+                       primary_channel_id, event_status
+                FROM events WHERE event_id = $1
+            """, event_id)
+
+            # For no-auth version, we skip Discord integration but log the attempt
+            logger.info(f"Event {event_id} created successfully (Discord integration skipped in no-auth mode)")
+
+            return {
+                "success": True,
+                "message": "Event created successfully (Discord integration skipped in no-auth mode)",
+                "event": dict(event_data),
+                "discord_integration": {"success": False, "note": "Discord integration not available in no-auth mode"}
+            }
+
+    except Exception as e:
+        logger.error(f"Error creating event: {e}")
+        import traceback
+        logger.error(f"Full traceback: {traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail="Failed to create event")
 
 # Startup/shutdown events
 @app.on_event("startup")
