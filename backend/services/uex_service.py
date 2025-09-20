@@ -53,6 +53,7 @@ class UEXService:
         return {
             'QUANTAINIUM': 17500.0,
             'BEXALITE': 8500.0,
+            'BORASE': 8200.0,
             'TARANITE': 7500.0,
             'LARANITE': 5200.0,
             'AGRICIUM': 4200.0,
@@ -77,6 +78,7 @@ class UEXService:
         return {
             'QUANTAINIUM': {"location": "Orison", "system": "Stanton", "station": "Crusader"},
             'BEXALITE': {"location": "Area 18", "system": "Stanton", "station": "ArcCorp"},
+            'BORASE': {"location": "Area 18", "system": "Stanton", "station": "ArcCorp"},
             'TARANITE': {"location": "Orison", "system": "Stanton", "station": "Crusader"},
             'LARANITE': {"location": "Port Olisar", "system": "Stanton", "station": "Crusader"},
             'AGRICIUM': {"location": "Area 18", "system": "Stanton", "station": "ArcCorp"},
@@ -119,6 +121,16 @@ class UEXService:
                     "best_location": best_loc["location"],
                     "best_system": best_loc["system"],
                     "best_station": best_loc["station"]
+                })
+            else:
+                # Add unknown materials with default price to prevent missing data
+                logger.warning(f"Material '{material}' not found in UEX prices, using default")
+                price_list.append({
+                    "material_name": material,
+                    "highest_price": 1000.0,  # Default fallback price
+                    "best_location": "Orison",
+                    "best_system": "Stanton",
+                    "best_station": "Crusader"
                 })
 
         return {
@@ -169,6 +181,19 @@ class UEXService:
                     "location_id": location_id,
                     "location_name": location_name,
                     "base_price": base_prices[material],
+                    "modifier": modifier
+                })
+            else:
+                # Add unknown materials with default price to prevent missing data
+                logger.warning(f"Material '{material}' not found in location prices, using default")
+                default_price = 1000.0
+                adjusted_price = default_price * modifier
+                price_list.append({
+                    "material_name": material,
+                    "price": round(adjusted_price, 2),
+                    "location_id": location_id,
+                    "location_name": location_name,
+                    "base_price": default_price,
                     "modifier": modifier
                 })
 
