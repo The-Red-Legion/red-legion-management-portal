@@ -3,7 +3,7 @@ import vue from '@vitejs/plugin-vue'
 
 export default defineConfig({
   plugins: [vue()],
-  base: process.env.NODE_ENV === 'production' ? 'http://dev.redlegion.gg:8080/' : '/',
+  base: process.env.NODE_ENV === 'production' ? '/mgmt/' : '/',
   server: {
     host: '0.0.0.0',
     port: 5173,
