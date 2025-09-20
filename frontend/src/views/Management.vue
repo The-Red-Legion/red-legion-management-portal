@@ -461,7 +461,7 @@ export default {
     const loadEvents = async () => {
       loading.value = true
       try {
-        const data = await apiService.getAdminEvents()
+        const data = await apiService.getEvents()
         events.value = data
       } catch (error) {
         console.error('Failed to load events:', error)
@@ -498,16 +498,20 @@ export default {
       
       try {
         const result = await apiService.deleteAdminEvent(eventId)
-        
+
         // Remove the event from the local list
         events.value = events.value.filter(event => event.event_id !== eventId)
-        
+
         // Show success message
         alert(`✅ SUCCESS\n\nEvent ${eventName} has been deleted successfully.\n\nAll associated data has been removed from the database.`)
-        
+
       } catch (error) {
         console.error('Failed to delete event:', error)
-        alert(`❌ DELETION FAILED\n\nEvent: ${eventName}\nError: ${error.message}\n\nPlease check the browser console for more details and try again.`)
+        if (error.response?.status === 403) {
+          alert('❌ Admin privileges required to delete events.\n\nThis feature is only available to administrators.')
+        } else {
+          alert(`❌ DELETION FAILED\n\nEvent: ${eventName}\nError: ${error.message}\n\nPlease check the browser console for more details and try again.`)
+        }
       } finally {
         // Remove from deleting list
         deletingEvents.value = deletingEvents.value.filter(id => id !== eventId)
@@ -530,16 +534,20 @@ export default {
       try {
         const result = await apiService.createTestEvent(eventType)
         console.log(`Test ${eventType} event created:`, result)
-        
+
         // Refresh the events list to show the new test event
         await loadEvents()
-        
+
         // Show success message
         alert(`✅ Test ${eventType} event "${result.event.event_name}" created successfully!\n\nEvent ID: ${result.event.event_id}\nParticipants: ${result.event.total_participants}\nDuration: ${Math.round(result.event.total_duration_minutes / 60)} hours`)
-        
+
       } catch (error) {
         console.error(`Failed to create test ${eventType} event:`, error)
-        alert(`Failed to create test ${eventType} event. Please try again.\n\nError: ${error.message}`)
+        if (error.response?.status === 403) {
+          alert('❌ Admin privileges required to create test events.\n\nThis feature is only available to administrators.')
+        } else {
+          alert(`Failed to create test ${eventType} event. Please try again.\n\nError: ${error.message}`)
+        }
       } finally {
         creatingTestEvent.value = false
       }
