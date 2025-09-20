@@ -59,8 +59,18 @@ jobs:
         # Copy backend files
         cp -r backend/* deployment-package/backend/
         
-        # Copy built frontend
-        cp -r frontend/dist/* deployment-package/frontend/dist/
+        # Copy built frontend to root of deployment package (nginx will serve from here)
+        cp -r frontend/dist/* deployment-package/
+
+        # Fix asset paths to use relative URLs for reverse proxy compatibility
+        sed -i 's|href="/assets/|href="assets/|g; s|src="/assets/|src="assets/|g; s|href="/static/|href="static/|g' deployment-package/index.html
+
+        # Add base tag for proper routing through reverse proxy
+        sed -i 's|<head>|<head>\n    <base href="/management/">|' deployment-package/index.html
+
+        # Create static directory and copy logo
+        mkdir -p deployment-package/static
+        cp frontend/dist/red-legion-logo.png deployment-package/static/ 2>/dev/null || true
         
         # Copy static files
         cp -r static/* deployment-package/static/ 2>/dev/null || true
@@ -71,11 +81,11 @@ jobs:
 
     - name: Deploy with GCloud
       run: |
-        # Copy deployment package to VM
-        gcloud compute scp --recurse deployment-package/* ubuntu@arccorp-web-server:/tmp/deployment/ --zone us-central1-a
-        
+        # Copy deployment package to management portal VM
+        gcloud compute scp --recurse deployment-package/* ubuntu@arccorp-management-portal:/tmp/deployment/ --zone us-central1-a
+
         # Deploy using gcloud ssh
-        gcloud compute ssh ubuntu@arccorp-web-server --zone us-central1-a --command "
+        gcloud compute ssh ubuntu@arccorp-management-portal --zone us-central1-a --command "
           # Stop existing service
           sudo systemctl stop red-legion-management-portal-backend || true
 
@@ -118,12 +128,12 @@ jobs:
         Type=simple
         User=ubuntu
         Group=ubuntu
-        WorkingDirectory=/opt/red-legion-management-portal/backend
+        WorkingDirectory=/opt/red-legion-management-portal
         Environment=PATH=/opt/red-legion-management-portal/venv/bin
-        Environment=PYTHONPATH=/opt/red-legion-management-portal/backend
+        Environment=PYTHONPATH=/opt/red-legion-management-portal
         EnvironmentFile=-/opt/red-legion-management-portal/.env
         # ExecStartPre=/bin/bash -c 'cd /opt/red-legion-management-portal/backend && /opt/red-legion-management-portal/venv/bin/python startup_check.py'
-        ExecStart=/opt/red-legion-management-portal/venv/bin/python enhanced_main.py
+        ExecStart=/opt/red-legion-management-portal/venv/bin/uvicorn main:app --host 0.0.0.0 --port 8000
         ExecReload=/bin/kill -HUP \$MAINPID
         StandardOutput=journal
         StandardError=journal
@@ -137,17 +147,67 @@ jobs:
         WantedBy=multi-user.target
         SERVICE_EOF
 
-          # Set proper permissions for backend files
+          # Set proper permissions for all files
           sudo chown -R ubuntu:ubuntu /opt/red-legion-management-portal
-          sudo chmod +x /opt/red-legion-management-portal/backend/startup_check.py
-          sudo chmod +x /opt/red-legion-management-portal/backend/main.py
+          sudo chmod +x /opt/red-legion-management-portal/startup_check.py 2>/dev/null || true
+          sudo chmod +x /opt/red-legion-management-portal/main.py
 
           # Reload systemd and configure service
           sudo systemctl daemon-reload
 
-          # Don't overwrite nginx config - the PHP website deployment handles this
-          # The PHP site config already includes the /management/ proxy routes
-          echo 'Nginx configuration is managed by the PHP website deployment'
+          # Configure nginx on management portal VM to serve frontend and proxy API calls
+          sudo tee /etc/nginx/sites-available/management-portal > /dev/null <<'NGINX_EOF'
+        server {
+            listen 80;
+            server_name _;
+            root /opt/red-legion-management-portal;
+            index index.html;
+
+            # Serve frontend assets
+            location /assets/ {
+                expires 1y;
+                add_header Cache-Control "public, immutable";
+            }
+
+            location /static/ {
+                expires 1y;
+                add_header Cache-Control "public, immutable";
+            }
+
+            # API routes - proxy to FastAPI
+            location ~ ^/(api|auth|events|discord|uex-|trading-|material-|location-|admin|ping|health)/ {
+                proxy_pass http://127.0.0.1:8000;
+                proxy_http_version 1.1;
+                proxy_set_header Upgrade \$http_upgrade;
+                proxy_set_header Connection 'upgrade';
+                proxy_set_header Host \$host;
+                proxy_set_header X-Real-IP \$remote_addr;
+                proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+                proxy_set_header X-Forwarded-Proto \$scheme;
+                proxy_cache_bypass \$http_upgrade;
+            }
+
+            # Root API endpoints
+            location ~ ^/(ping|health)\$ {
+                proxy_pass http://127.0.0.1:8000;
+                proxy_http_version 1.1;
+                proxy_set_header Host \$host;
+                proxy_set_header X-Real-IP \$remote_addr;
+                proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+                proxy_set_header X-Forwarded-Proto \$scheme;
+            }
+
+            # Serve frontend for all other routes (SPA routing)
+            location / {
+                try_files \$uri \$uri/ /index.html;
+            }
+        }
+        NGINX_EOF
+
+          # Enable nginx site
+          sudo rm -f /etc/nginx/sites-enabled/default
+          sudo ln -sf /etc/nginx/sites-available/management-portal /etc/nginx/sites-enabled/
+          sudo nginx -t && sudo systemctl reload nginx
           
           # Stop existing service if running
           sudo systemctl stop red-legion-management-portal-backend || true
@@ -167,12 +227,16 @@ jobs:
           echo '=== Testing Backend Connectivity ==='
           curl -f http://127.0.0.1:8000/ping || echo 'Backend not responding on localhost'
 
+          echo '=== Testing Frontend Connectivity ==='
+          curl -f http://127.0.0.1/ | head -5 || echo 'Frontend not responding on localhost'
+
           echo '=== Port Check ==='
           sudo netstat -tlnp | grep :8000 || echo 'Port 8000 not listening'
         "
 
     - name: Verify deployment
       run: |
-        echo "Deployment completed successfully!"
-        echo "Web server should be accessible at: http://34.28.1.154:8000"
-        echo "Domain: ${{ secrets.DOMAIN_NAME }}"
+        echo "🎉 Management Portal Deployment completed successfully!"
+        echo "Internal access: http://34.55.83.147:8000"
+        echo "External access: http://dev.redlegion.gg/management/"
+        echo "Frontend and backend are both running with nginx reverse proxy configured"

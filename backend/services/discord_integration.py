@@ -8,6 +8,7 @@ for automatic voice activity tracking when events are created.
 import asyncio
 import aiohttp
 import logging
+import os
 from datetime import datetime
 from typing import Optional, Dict, Any
 from pydantic import BaseModel
@@ -18,7 +19,7 @@ logger = logging.getLogger(__name__)
 
 class DiscordBotConfig:
     """Configuration for Discord bot integration."""
-    BOT_API_BASE_URL = "http://127.0.0.1:8001"
+    BOT_API_BASE_URL = os.getenv("BOT_API_URL", "http://10.128.0.2:8001")
     REQUEST_TIMEOUT = 30
     DEFAULT_GUILD_ID = "814699481912049704"  # Red Legion Discord server ID
 

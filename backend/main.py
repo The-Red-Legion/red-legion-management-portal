@@ -2906,52 +2906,34 @@ async def get_location_prices(location_id: int, material_names: str = None, curr
         raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
 
 async def get_uex_prices() -> Dict[str, float]:
-    """Get UEX ore prices from the real UEX cache system."""
+    """Get UEX ore prices from the bot API's UEX cache endpoint."""
     try:
-        # Try to import and use the UEX cache system
-        import importlib.util
-        from pathlib import Path
-        
-        # Path to the UEX cache module
-        cache_file_path = Path(__file__).parent.parent.parent / "red-legion-bots" / "src" / "services" / "uex_cache.py"
-        
-        if cache_file_path.exists():
-            # Load the UEX cache module
-            spec = importlib.util.spec_from_file_location("uex_cache", cache_file_path)
-            if spec and spec.loader:
-                uex_cache = importlib.util.module_from_spec(spec)
-                sys.modules["uex_cache"] = uex_cache
-                spec.loader.exec_module(uex_cache)
-                
-                # Get the cache instance and fetch current prices
-                if hasattr(uex_cache, 'UEXCache'):
-                    cache_instance = uex_cache.UEXCache()
-                    cache_data = await cache_instance.get_cached_data()
-                    
-                    if cache_data and 'ores' in cache_data:
-                        prices = {}
-                        for ore_code, ore_data in cache_data['ores'].items():
-                            # Use price_sell as the selling price (what miners get when selling)
-                            if isinstance(ore_data, dict) and 'price_sell' in ore_data:
-                                prices[ore_code.upper()] = float(ore_data['price_sell'])
-                        
-                        # Add salvage materials if available
-                        if 'salvage' in cache_data:
-                            for material_code, material_data in cache_data['salvage'].items():
-                                if isinstance(material_data, dict) and 'price_sell' in material_data:
-                                    prices[material_code.upper()] = float(material_data['price_sell'])
-                        
-                        # Add some manual mappings for salvage materials if not present
-                        if 'RECYCLED MATERIAL COMPOSITE' not in prices:
-                            prices['RECYCLED MATERIAL COMPOSITE'] = 9869.0  # RMC fallback
-                        if 'CONSTRUCTION MATERIALS' not in prices:
-                            prices['CONSTRUCTION MATERIALS'] = 2157.0  # CMAT fallback
-                        
-                        logger.info(f"✅ Successfully loaded {len(prices)} prices from UEX cache")
-                        return prices
-    
+        # Try to get prices from the bot API's UEX cache endpoint
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.get(f"{BOT_API_URL}/api/uex-prices")
+            if response.status_code == 200:
+                prices_data = response.json()
+                if isinstance(prices_data, dict) and 'prices' in prices_data:
+                    prices = {}
+                    for ore_name, price in prices_data['prices'].items():
+                        prices[ore_name.upper()] = float(price)
+
+                    logger.info(f"✅ Successfully loaded {len(prices)} prices from bot API UEX cache")
+                    return prices
+                elif isinstance(prices_data, dict):
+                    # If the response is already a price dictionary
+                    prices = {}
+                    for ore_name, price in prices_data.items():
+                        if isinstance(price, (int, float)):
+                            prices[ore_name.upper()] = float(price)
+
+                    logger.info(f"✅ Successfully loaded {len(prices)} prices from bot API")
+                    return prices
+            else:
+                logger.warning(f"⚠️ Bot API UEX endpoint returned {response.status_code}: {response.text}")
+
     except Exception as e:
-        logger.warning(f"⚠️ Could not load UEX cache, using fallback prices: {e}")
+        logger.warning(f"⚠️ Could not fetch UEX prices from bot API, using fallback prices: {e}")
     
     # Fallback to default prices if UEX cache is unavailable
     logger.info("📋 Using fallback hardcoded prices")
@@ -2987,87 +2969,36 @@ async def get_uex_prices() -> Dict[str, float]:
 
 @app.post("/admin/refresh-uex-cache")
 async def refresh_uex_cache(admin_user: SessionData = Depends(get_admin_user)):
-    """Force refresh of UEX price cache to get current market prices."""
+    """Force refresh of UEX price cache via bot API."""
     logger.info("🔄 Manual UEX cache refresh requested")
-    
-    import sys
-    import importlib.util
-    from pathlib import Path
-    
-    # Direct import of the UEX cache module - go up to red-legion directory first
-    cache_file_path = Path(__file__).parent.parent.parent / "red-legion-bots" / "src" / "services" / "uex_cache.py"
-    logger.info(f"🔍 Looking for UEX cache at: {cache_file_path}")
-    
+
     try:
-        # Load the module directly
-        spec = importlib.util.spec_from_file_location("uex_cache", cache_file_path)
-        if spec is None or spec.loader is None:
-            raise ImportError(f"Could not load spec from {cache_file_path}")
-        
-        uex_cache_module = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(uex_cache_module)
-        get_uex_cache = uex_cache_module.get_uex_cache
-        
-        cache = get_uex_cache()
-        
-        # Force refresh all price categories
-        categories = ["ores", "high_value", "all"]
-        refresh_results = {}
-        
-        for category in categories:
-            try:
-                logger.info(f"🔄 Refreshing {category} prices...")
-                prices = await cache.get_ore_prices(category=category, force_refresh=True)
-                
-                if prices:
-                    refresh_results[category] = {
-                        "success": True,
-                        "item_count": len(prices),
-                        "timestamp": datetime.now().isoformat()
-                    }
-                    logger.info(f"✅ Refreshed {len(prices)} {category} prices")
-                else:
-                    refresh_results[category] = {
-                        "success": False,
-                        "error": "No data returned from API",
-                        "timestamp": datetime.now().isoformat()
-                    }
-                    logger.warning(f"⚠️ Failed to refresh {category} prices - no data")
-                    
-            except Exception as e:
-                logger.error(f"❌ Error refreshing {category} prices: {e}")
-                refresh_results[category] = {
-                    "success": False,
-                    "error": str(e),
+        # Try to trigger cache refresh via the bot API
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.post(f"{BOT_API_URL}/api/refresh-uex-cache")
+            if response.status_code == 200:
+                refresh_data = response.json()
+                logger.info(f"✅ Successfully triggered UEX cache refresh via bot API")
+                return {
+                    "success": True,
+                    "message": "UEX cache refresh triggered via bot API",
+                    "bot_response": refresh_data,
                     "timestamp": datetime.now().isoformat()
                 }
-        
-        # Get cache stats for response
-        stats = cache.get_cache_stats()
-        
-        success_count = sum(1 for result in refresh_results.values() if result["success"])
-        total_count = len(refresh_results)
-        
-        return {
-            "success": success_count > 0,
-            "message": f"Refreshed {success_count}/{total_count} price categories",
-            "results": refresh_results,
-            "cache_stats": stats,
-            "timestamp": datetime.now().isoformat()
-        }
-        
-    except ImportError as e:
-        logger.error(f"❌ Could not import UEX cache system: {e}")
-        return {
-            "success": False,
-            "error": f"UEX cache system not available: {str(e)}",
-            "timestamp": datetime.now().isoformat()
-        }
+            else:
+                logger.warning(f"⚠️ Bot API refresh endpoint returned {response.status_code}: {response.text}")
+                return {
+                    "success": False,
+                    "error": f"Bot API returned {response.status_code}: {response.text}",
+                    "timestamp": datetime.now().isoformat()
+                }
+
     except Exception as e:
-        logger.error(f"❌ Unexpected error during UEX cache refresh: {e}")
+        logger.error(f"❌ Could not trigger UEX cache refresh via bot API: {e}")
         return {
             "success": False,
-            "error": f"Cache refresh failed: {str(e)}",
+            "error": f"Failed to communicate with bot API: {str(e)}",
+            "fallback_note": "UEX cache refresh must be done manually on the bot server",
             "timestamp": datetime.now().isoformat()
         }
 
