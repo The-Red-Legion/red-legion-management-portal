@@ -336,6 +336,138 @@ async def get_location_prices(location_id: str, materials: str = ""):
         logger.error(f"Error fetching location prices for {location_id}: {e}")
         raise HTTPException(status_code=500, detail="Failed to fetch location prices")
 
+# Pydantic models for payroll calculation
+class PayrollCalculateRequest(BaseModel):
+    ore_quantities: Dict[str, float]
+    custom_prices: Optional[Dict[str, float]] = None
+    donating_users: List[str] = []
+
+@app.post("/payroll/{event_id}/calculate")
+@app.post("/mgmt/api/payroll/{event_id}/calculate")
+async def calculate_payroll(event_id: str, request: PayrollCalculateRequest):
+    """Calculate payroll for a mining event."""
+    try:
+        event_id = validate_event_id(event_id)
+
+        # Get event details
+        pool = await get_db_pool()
+        if pool is None:
+            raise HTTPException(status_code=500, detail="Database connection failed")
+
+        async with pool.acquire() as conn:
+            # Get event info
+            event = await conn.fetchrow("""
+                SELECT event_id, event_name, total_participants, total_duration_minutes
+                FROM events
+                WHERE event_id = $1
+            """, event_id)
+
+            if not event:
+                raise HTTPException(status_code=404, detail="Event not found")
+
+            # Get event participants with their time contributions
+            participants = await conn.fetch("""
+                SELECT user_id, username, display_name, duration_minutes, is_org_member
+                FROM participation
+                WHERE event_id = $1 AND duration_minutes > 0
+                ORDER BY duration_minutes DESC
+            """, event_id)
+
+        # Use custom prices if provided, otherwise get UEX prices
+        if request.custom_prices:
+            prices = request.custom_prices
+        else:
+            prices = get_fallback_uex_prices()
+
+        # Calculate total ore value
+        total_ore_value = 0
+        ore_breakdown = {}
+
+        for ore, quantity in request.ore_quantities.items():
+            ore_upper = ore.upper()
+            price_per_scu = prices.get(ore_upper, 0)
+            ore_value = quantity * price_per_scu
+            total_ore_value += ore_value
+            ore_breakdown[ore_upper] = {
+                "quantity": quantity,
+                "price_per_scu": price_per_scu,
+                "total_value": ore_value
+            }
+
+        # Calculate total participation time
+        total_participation_time = sum(p['duration_minutes'] for p in participants)
+
+        if total_participation_time == 0:
+            raise HTTPException(status_code=400, detail="No valid participation time found")
+
+        # Calculate payouts based on time participation
+        payouts = []
+        total_donated = 0
+
+        for participant in participants:
+            user_id_str = str(participant['user_id'])
+            time_percentage = participant['duration_minutes'] / total_participation_time
+            base_payout = total_ore_value * time_percentage
+
+            # Check if user is donating their share
+            is_donating = user_id_str in request.donating_users
+
+            if is_donating:
+                total_donated += base_payout
+                final_payout = 0
+            else:
+                final_payout = base_payout
+
+            payouts.append({
+                "user_id": participant['user_id'],
+                "username": participant['username'],
+                "display_name": participant['display_name'],
+                "duration_minutes": participant['duration_minutes'],
+                "time_percentage": round(time_percentage * 100, 2),
+                "base_payout": round(base_payout, 2),
+                "is_donating": is_donating,
+                "final_payout": round(final_payout, 2),
+                "is_org_member": participant['is_org_member']
+            })
+
+        # Redistribute donations among non-donating participants
+        non_donating_participants = [p for p in payouts if not p['is_donating']]
+
+        if non_donating_participants and total_donated > 0:
+            donation_per_person = total_donated / len(non_donating_participants)
+            for payout in payouts:
+                if not payout['is_donating']:
+                    payout['donation_bonus'] = round(donation_per_person, 2)
+                    payout['final_payout'] = round(payout['final_payout'] + donation_per_person, 2)
+                else:
+                    payout['donation_bonus'] = 0
+
+        # Calculate summary
+        total_payouts = sum(p['final_payout'] for p in payouts)
+
+        result = {
+            "event_id": event_id,
+            "event_name": event['event_name'],
+            "calculation_timestamp": datetime.now(timezone.utc).isoformat(),
+            "total_ore_value_auec": round(total_ore_value, 2),
+            "total_donated_auec": round(total_donated, 2),
+            "total_payouts_auec": round(total_payouts, 2),
+            "ore_breakdown": ore_breakdown,
+            "payouts": payouts,
+            "summary": {
+                "total_participants": len(participants),
+                "donating_participants": len([p for p in payouts if p['is_donating']]),
+                "total_participation_minutes": total_participation_time,
+                "average_payout": round(total_payouts / len(payouts), 2) if payouts else 0
+            }
+        }
+
+        return result
+
+    except Exception as e:
+        logger.error(f"Error calculating payroll for {event_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to calculate payroll: {str(e)}")
+
 # Startup/shutdown events
 @app.on_event("startup")
 async def startup_event():

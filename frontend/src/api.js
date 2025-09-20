@@ -73,6 +73,16 @@ export const apiService = {
     return response.data
   },
 
+  // Payroll calculation
+  async calculatePayroll(eventId, oreQuantities, customPrices = null, donatingUsers = []) {
+    const response = await api.post(`/payroll/${eventId}/calculate`, {
+      ore_quantities: oreQuantities,
+      custom_prices: customPrices,
+      donating_users: donatingUsers
+    })
+    return response.data
+  },
+
   // Health checks
   async ping() {
     const response = await api.get('/ping')
