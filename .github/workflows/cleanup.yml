@@ -17,6 +17,11 @@ on:
         description: 'Type "REMOVE" to confirm complete removal'
         required: true
         type: string
+      reset_vm_if_unresponsive:
+        description: 'Reset VM if SSH fails (will cause brief downtime)'
+        required: false
+        default: false
+        type: boolean
 
 jobs:
   cleanup:
@@ -56,6 +61,24 @@ jobs:
           echo 'Services related to red-legion:'
           systemctl list-units --state=active | grep red-legion || echo 'No red-legion services found'
         " --ssh-flag="-o ConnectTimeout=10" || echo "Could not get current status (VM may be under heavy load)"
+
+    - name: Reset VM if unresponsive (optional)
+      run: |
+        if [ "${{ github.event.inputs.reset_vm_if_unresponsive }}" == "true" ]; then
+          echo "=== Testing SSH connectivity first ==="
+          if ! gcloud compute ssh ubuntu@${{ github.event.inputs.vm_name }} --zone ${{ github.event.inputs.zone }} --command "echo 'SSH test'" --ssh-flag="-o ConnectTimeout=5" 2>/dev/null; then
+            echo "SSH failed, resetting VM to break resource exhaustion cycle..."
+            gcloud compute instances reset ${{ github.event.inputs.vm_name }} --zone ${{ github.event.inputs.zone }}
+            echo "Waiting 2 minutes for VM to restart..."
+            sleep 120
+            echo "Testing SSH after reset..."
+            gcloud compute ssh ubuntu@${{ github.event.inputs.vm_name }} --zone ${{ github.event.inputs.zone }} --command "echo 'SSH restored after reset'" --ssh-flag="-o ConnectTimeout=15"
+          else
+            echo "SSH is working, no reset needed"
+          fi
+        else
+          echo "VM reset option not selected, proceeding with current VM state"
+        fi
 
     - name: Complete Management Portal Removal
       run: |
