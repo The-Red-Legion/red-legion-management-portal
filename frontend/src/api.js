@@ -54,7 +54,8 @@ export const apiService = {
   // UEX Prices
   async getUexPrices() {
     const response = await api.get('/uex-prices')
-    return response.data
+    // Extract the prices object from the response structure: {prices: {...}, source: "...", ...}
+    return response.data.prices || {}
   },
 
   // Trading Locations
@@ -70,7 +71,15 @@ export const apiService = {
       ? `/location-prices/${locationId}?materials=${encodeURIComponent(materialsParam)}`
       : `/material-prices/${encodeURIComponent(materialsParam)}`
     const response = await api.get(url)
-    return response.data
+
+    // Extract the correct array from the response structure
+    if (locationId) {
+      // Location-specific prices: {location_prices: [...], source: "...", ...}
+      return response.data.location_prices || []
+    } else {
+      // General material prices: {materials: [...], source: "...", ...}
+      return response.data.materials || []
+    }
   },
 
   // Payroll calculation

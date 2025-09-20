@@ -95,21 +95,21 @@
           >
             <option value="">Average Prices (No Location)</option>
             <optgroup label="Stanton System">
-              <option 
-                v-for="location in stantonLocations" 
-                :key="location.location_id" 
-                :value="location.location_id"
+              <option
+                v-for="location in stantonLocations"
+                :key="location.id"
+                :value="location.id"
               >
-                {{ location.location_name }} ({{ location.station_outpost }})
+                {{ location.name }} ({{ location.planet }})
               </option>
             </optgroup>
             <optgroup label="Pyro System">
-              <option 
-                v-for="location in pyroLocations" 
-                :key="location.location_id" 
-                :value="location.location_id"
+              <option
+                v-for="location in pyroLocations"
+                :key="location.id"
+                :value="location.id"
               >
-                {{ location.location_name }} ({{ location.station_outpost }})
+                {{ location.name }} ({{ location.planet }})
               </option>
             </optgroup>
           </select>
@@ -465,7 +465,7 @@ export default {
     
     // Trading location state
     const tradingLocations = ref([])
-    const selectedLocationId = ref(4) // Default to Orison (location_id: 4)
+    const selectedLocationId = ref(4) // Default to Orison (best prices for most materials)
     const materialPriceInfo = ref({})
     const loadingLocations = ref(false)
 
@@ -508,11 +508,11 @@ export default {
 
     // Computed properties to group locations by system
     const stantonLocations = computed(() => {
-      return tradingLocations.value.filter(location => location.system_name === 'Stanton')
+      return tradingLocations.value.filter(location => location.system === 'Stanton')
     })
 
     const pyroLocations = computed(() => {
-      return tradingLocations.value.filter(location => location.system_name === 'Pyro')
+      return tradingLocations.value.filter(location => location.system === 'Pyro')
     })
 
     // Computed property to calculate total SCU from all materials with quantities
@@ -617,15 +617,16 @@ export default {
         // Update default prices with location-specific prices
         const newDefaultPrices = { ...defaultPrices.value }
         locationPrices.forEach(item => {
-          newDefaultPrices[item.material_name] = item.sell_price
+          // Backend returns 'price' property for location-specific prices
+          newDefaultPrices[item.material_name] = item.price
         })
         defaultPrices.value = newDefaultPrices
-        
+
         // Update the actual price fields immediately if not using custom prices
         if (!useCustomPrices.value) {
           const newPrices = { ...customPrices.value }
           locationPrices.forEach(item => {
-            newPrices[item.material_name] = item.sell_price
+            newPrices[item.material_name] = item.price
           })
           customPrices.value = newPrices
         }
