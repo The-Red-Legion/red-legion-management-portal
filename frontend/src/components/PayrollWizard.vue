@@ -732,13 +732,13 @@ export default {
         // Prepare donation data
         const donatingUsers = Object.entries(participantDonations.value)
           .filter(([userId, isDonating]) => isDonating)
-          .map(([userId]) => userId)
+          .map(([userId]) => String(userId)) // Ensure user_id is converted to string
         
         // Debug logging
         console.log('🔍 Debug - Participant donations object:', participantDonations.value)
-        console.log('🔍 Debug - Donating users being sent:', donatingUsers)
+        console.log('🔍 Debug - Donating users being sent (as strings):', donatingUsers)
         console.log('🔍 Debug - Event participants:', eventParticipants.value)
-        console.log('🔍 Debug - Participant user_ids:', eventParticipants.value.map(p => ({ username: p.username, user_id: p.user_id, user_id_type: typeof p.user_id })))
+        console.log('🔍 Debug - Participant user_ids:', eventParticipants.value.map(p => ({ username: p.username, user_id: p.user_id, user_id_type: typeof p.user_id, user_id_string: String(p.user_id) })))
         
         // Calculate payroll
         const result = await apiService.calculatePayroll(
@@ -816,7 +816,7 @@ export default {
         // Get the current payroll calculation data
         const donatingUsers = Object.entries(participantDonations.value)
           .filter(([userId, isDonating]) => isDonating)
-          .map(([userId]) => userId)
+          .map(([userId]) => String(userId)) // Ensure user_id is converted to string
         
         const prices = useCustomPrices.value ? customPrices.value : null
         
