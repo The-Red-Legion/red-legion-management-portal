@@ -6,6 +6,40 @@
         <h2 class="text-2xl font-bold text-white">Payroll Calculator</h2>
         <div class="text-sm text-space-gray-400">Step {{ currentStep }} of 5</div>
       </div>
+
+      <!-- Event Information Bar -->
+      <div v-if="selectedEvent" class="bg-space-gray-700 rounded-lg p-4 mb-4 border-l-4 border-red-legion-500">
+        <div class="flex items-center justify-between">
+          <div class="flex-1">
+            <h3 class="text-lg font-semibold text-white mb-1">
+              {{ selectedEvent.event_name || selectedEvent.event_id }}
+            </h3>
+            <div class="text-space-gray-300 text-sm">
+              <span class="mr-4">
+                <span class="text-space-gray-400">Organizer:</span>
+                {{ selectedEvent.organizer_name || 'Unknown' }}
+              </span>
+              <span class="mr-4">
+                <span class="text-space-gray-400">Type:</span>
+                {{ selectedEvent.event_type?.charAt(0).toUpperCase() + selectedEvent.event_type?.slice(1) || 'Unknown' }}
+              </span>
+            </div>
+          </div>
+          <div class="text-right">
+            <div class="text-sm text-space-gray-300 font-mono">
+              Event ID: {{ selectedEvent.event_id }}
+            </div>
+            <div class="flex items-center space-x-4 text-xs mt-1">
+              <span :class="selectedEvent.ended_at ? 'text-red-400' : 'text-green-400'">
+                {{ selectedEvent.ended_at ? '🔴 Ended' : '🟢 Active' }}
+              </span>
+              <span v-if="closingEvent" class="text-yellow-400">
+                🟡 Closing...
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
       
       <div class="flex items-center space-x-4">
         <div v-for="(step, index) in steps" :key="index" class="flex items-center">
@@ -184,10 +218,6 @@
             >
               Closing...
             </button>
-            <!-- Debug info for troubleshooting -->
-            <div v-if="selectedEvent" class="text-xs text-gray-400 bg-gray-800 px-2 py-1 rounded">
-              Event: {{ selectedEvent.event_id }} | Ended: {{ selectedEvent.ended_at ? 'Yes' : 'No' }} | Closing: {{ closingEvent ? 'Yes' : 'No' }}
-            </div>
           </div>
 
           <button @click="nextStep" class="px-6 py-3 bg-red-legion-600 hover:bg-red-legion-700 text-white rounded-lg transition-colors">
@@ -285,10 +315,6 @@
             >
               Closing...
             </button>
-            <!-- Debug info for troubleshooting -->
-            <div v-if="selectedEvent" class="text-xs text-gray-400 bg-gray-800 px-2 py-1 rounded">
-              Event: {{ selectedEvent.event_id }} | Ended: {{ selectedEvent.ended_at ? 'Yes' : 'No' }} | Closing: {{ closingEvent ? 'Yes' : 'No' }}
-            </div>
           </div>
 
           <button @click="calculatePayroll" class="px-6 py-3 bg-red-legion-600 hover:bg-red-legion-700 text-white rounded-lg transition-colors">
