@@ -262,13 +262,19 @@ async def get_material_prices(materials: str):
         # Get UEX prices
         uex_prices = get_fallback_uex_prices()
 
-        # Filter for requested materials
-        filtered_prices = {}
+        # Filter for requested materials and format as array
+        price_list = []
         for material in material_names:
             if material in uex_prices:
-                filtered_prices[material] = uex_prices[material]
+                price_list.append({
+                    "material_name": material,
+                    "highest_price": uex_prices[material],
+                    "best_location": "Orison",
+                    "best_system": "Stanton",
+                    "best_station": "Orison"
+                })
 
-        return filtered_prices
+        return price_list
     except Exception as e:
         logger.error(f"Error fetching material prices for {materials}: {e}")
         raise HTTPException(status_code=500, detail="Failed to fetch material prices")
@@ -294,13 +300,25 @@ async def get_location_prices(location_id: str, materials: str = ""):
 
         modifier = location_modifiers.get(location_id.lower(), 1.0)
 
-        # Filter for requested materials and apply location modifier
-        filtered_prices = {}
+        # Get location name for display
+        location_names = {
+            "orison": "Orison",
+            "area18": "Area 18",
+            "lorville": "Lorville",
+            "new_babbage": "New Babbage"
+        }
+        location_name = location_names.get(location_id.lower(), location_id.title())
+
+        # Filter for requested materials and apply location modifier, format as array
+        price_list = []
         for material in material_names:
             if material in base_prices:
-                filtered_prices[material] = round(base_prices[material] * modifier, 2)
+                price_list.append({
+                    "material_name": material,
+                    "sell_price": round(base_prices[material] * modifier, 2)
+                })
 
-        return filtered_prices
+        return price_list
     except Exception as e:
         logger.error(f"Error fetching location prices for {location_id}: {e}")
         raise HTTPException(status_code=500, detail="Failed to fetch location prices")
