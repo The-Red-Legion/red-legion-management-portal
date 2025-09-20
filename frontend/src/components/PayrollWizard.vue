@@ -802,17 +802,25 @@ export default {
 
         // Transform the backend response to match frontend expectations
         if (result.participants) {
+          console.log('🔍 Debug - Backend participants response:', result.participants)
+
           // Transform participants to payouts format
-          result.payouts = result.participants.map(participant => ({
-            user_id: participant.user_id,
-            username: participant.username,
-            display_name: participant.display_name,
-            participation_minutes: participant.duration_minutes,
-            participation_percentage: participant.duration_minutes ?
-              (participant.duration_minutes / result.total_duration_minutes * 100) : 0,
-            final_payout_auec: participant.payout || 0,
-            is_donating: participant.is_donating || false
-          }))
+          result.payouts = result.participants.map(participant => {
+            const transformedParticipant = {
+              user_id: participant.user_id,
+              username: participant.username,
+              display_name: participant.display_name,
+              participation_minutes: participant.duration_minutes,
+              participation_percentage: participant.duration_minutes ?
+                (participant.duration_minutes / result.total_duration_minutes * 100) : 0,
+              final_payout_auec: participant.payout || 0,
+              is_donating: participant.is_donating || false
+            }
+
+            console.log(`🔍 Debug - Transformed ${participant.username}: payout=${participant.payout}, is_donating=${participant.is_donating}, final_payout_auec=${transformedParticipant.final_payout_auec}`)
+
+            return transformedParticipant
+          })
 
           // Set total value from backend calculation
           result.total_value_auec = result.total_payout || 0

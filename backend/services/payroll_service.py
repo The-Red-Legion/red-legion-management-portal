@@ -60,11 +60,23 @@ class PayrollService:
                                            if not (donating_users and str(p['user_id']) in donating_users)]
                 non_donating_duration = sum(p['duration_minutes'] for p in non_donating_participants)
 
+                # Debug logging
+                logger.info(f"🔍 Debug - Donating users received: {donating_users}")
+                logger.info(f"🔍 Debug - Donating users type: {type(donating_users)}")
+                if donating_users:
+                    logger.info(f"🔍 Debug - First donating user: {donating_users[0]} (type: {type(donating_users[0])})")
+
                 payroll_data = []
                 for participant in participants:
-                    if donating_users and str(participant['user_id']) in donating_users:
+                    user_id_str = str(participant['user_id'])
+                    is_donating = donating_users and user_id_str in donating_users
+
+                    logger.info(f"🔍 Debug - Participant {participant['username']} (ID: {user_id_str}): is_donating={is_donating}")
+
+                    if is_donating:
                         # Donating users get 0 payout
                         payout = 0.0
+                        logger.info(f"🔍 Debug - Setting payout to 0 for donating user {participant['username']}")
                     else:
                         # Calculate proportional payout based on time among non-donating participants
                         if non_donating_duration > 0 and total_ore_value > 0:
@@ -74,12 +86,12 @@ class PayrollService:
                             payout = 0.0
 
                     payroll_data.append({
-                        "user_id": str(participant['user_id']),
+                        "user_id": user_id_str,
                         "username": participant['username'],
                         "display_name": participant['display_name'],
                         "duration_minutes": participant['duration_minutes'],
                         "payout": payout,
-                        "is_donating": donating_users and str(participant['user_id']) in donating_users
+                        "is_donating": is_donating
                     })
 
                 # Total payout distributed (excluding donations)
