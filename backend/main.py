@@ -487,9 +487,44 @@ async def calculate_payroll(event_id: str, request: PayrollCalculateRequest):
 async def finalize_payroll(event_id: str, request: PayrollCalculateRequest):
     """Finalize and save payroll to database."""
     try:
-        # For now, this will be the same as calculate but could store to database
-        # In a real implementation, this would save the payroll results
+        event_id = validate_event_id(event_id)
+
+        # First calculate the payroll
         result = await calculate_payroll(event_id, request)
+
+        pool = await get_db_pool()
+        if pool is None:
+            raise HTTPException(status_code=500, detail="Database connection failed")
+
+        async with pool.acquire() as conn:
+            # Clear any existing payroll data for this event to avoid duplicates
+            await conn.execute("""
+                DELETE FROM payroll_sessions WHERE event_id = $1
+            """, event_id)
+
+            # Insert the finalized payroll data
+            for payout in result["payouts"]:
+                await conn.execute("""
+                    INSERT INTO payroll_sessions (
+                        event_id, user_id, username, participation_minutes,
+                        participation_percentage, base_payout_auec, final_payout_auec,
+                        donation_bonus, is_donating, calculated_by_name, calculation_timestamp
+                    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+                """,
+                event_id,
+                payout["user_id"],
+                payout["username"],
+                payout["participation_minutes"],
+                payout["participation_percentage"],
+                payout["base_payout"],
+                payout["final_payout_auec"],
+                payout.get("donation_bonus", 0),
+                payout["is_donating"],
+                "System",  # Could be enhanced to track actual user
+                datetime.now(timezone.utc)
+                )
+
+            logger.info(f"Finalized payroll for event {event_id}: {len(result['payouts'])} participants saved to database")
 
         # Add a payroll_id for the response
         result["payroll_id"] = f"payroll-{event_id}-{datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S')}"
@@ -586,14 +621,18 @@ async def export_payroll(event_id: str):
             if not event:
                 raise HTTPException(status_code=404, detail="Event not found")
 
-            # Get payroll data
-            payroll_data = await conn.fetch("""
-                SELECT user_id, username, participation_minutes,
+            # Get payroll data (with deduplication by user_id)
+            payroll_data_raw = await conn.fetch("""
+                SELECT DISTINCT ON (user_id)
+                       user_id, username, participation_minutes,
                        participation_percentage, final_payout_auec
                 FROM payroll_sessions
                 WHERE event_id = $1
-                ORDER BY final_payout_auec DESC
+                ORDER BY user_id, calculation_timestamp DESC
             """, event_id)
+
+            # Sort by final payout for display
+            payroll_data = sorted(payroll_data_raw, key=lambda x: x['final_payout_auec'] or 0, reverse=True)
 
             # Calculate totals
             total_payout = sum(p['final_payout_auec'] for p in payroll_data if p['final_payout_auec'])
@@ -651,15 +690,19 @@ async def get_payroll_summary(event_id: str):
             if not event:
                 raise HTTPException(status_code=404, detail="Event not found")
 
-            # Get payroll data from payroll_sessions
-            payroll_data = await conn.fetch("""
-                SELECT user_id, username, participation_minutes,
+            # Get payroll data from payroll_sessions (with deduplication by user_id)
+            payroll_data_raw = await conn.fetch("""
+                SELECT DISTINCT ON (user_id)
+                       user_id, username, participation_minutes,
                        participation_percentage, final_payout_auec,
                        base_payout_auec, donation_bonus, is_donating
                 FROM payroll_sessions
                 WHERE event_id = $1
-                ORDER BY final_payout_auec DESC
+                ORDER BY user_id, calculation_timestamp DESC
             """, event_id)
+
+            # Sort by final payout for display
+            payroll_data = sorted(payroll_data_raw, key=lambda x: x['final_payout_auec'] or 0, reverse=True)
 
             if not payroll_data:
                 raise HTTPException(status_code=404, detail="No payroll data found for this event")
