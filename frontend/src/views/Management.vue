@@ -34,33 +34,42 @@
           <div class="mb-4 flex justify-between items-center">
             <p class="text-space-gray-300">Total Events: {{ events.length }}</p>
             <div class="flex space-x-3">
-              <!-- Test Event Creation Buttons -->
-              <button 
-                @click="createTestEvent('mining')" 
-                :disabled="creatingTestEvent"
-                :class="[
-                  'px-4 py-2 rounded-lg transition-colors flex items-center space-x-2',
-                  creatingTestEvent 
-                    ? 'bg-gray-500 text-gray-300 cursor-not-allowed' 
-                    : 'bg-green-600 hover:bg-green-700 text-white'
-                ]"
-              >
-                <div class="text-lg">⛏️</div>
-                <span>{{ creatingTestEvent ? 'Creating...' : 'Test Mining' }}</span>
-              </button>
-              <button 
-                @click="createTestEvent('salvage')" 
-                :disabled="creatingTestEvent"
-                :class="[
-                  'px-4 py-2 rounded-lg transition-colors flex items-center space-x-2',
-                  creatingTestEvent 
-                    ? 'bg-gray-500 text-gray-300 cursor-not-allowed' 
-                    : 'bg-orange-600 hover:bg-orange-700 text-white'
-                ]"
-              >
-                <div class="text-lg">🔧</div>
-                <span>{{ creatingTestEvent ? 'Creating...' : 'Test Salvage' }}</span>
-              </button>
+              <!-- Consolidated Test Event Creation -->
+              <div class="relative">
+                <button
+                  @click="showTestEventDropdown = !showTestEventDropdown"
+                  :disabled="creatingTestEvent"
+                  :class="[
+                    'px-4 py-2 rounded-lg transition-colors flex items-center space-x-2',
+                    creatingTestEvent
+                      ? 'bg-gray-500 text-gray-300 cursor-not-allowed'
+                      : 'bg-purple-600 hover:bg-purple-700 text-white'
+                  ]"
+                >
+                  <div class="text-lg">🧪</div>
+                  <span>{{ creatingTestEvent ? 'Creating...' : 'Create Test Event' }}</span>
+                  <div class="text-sm" v-if="!creatingTestEvent">▼</div>
+                </button>
+
+                <!-- Dropdown Menu -->
+                <div
+                  v-if="showTestEventDropdown && !creatingTestEvent"
+                  class="absolute top-full left-0 mt-1 bg-gray-800 border border-gray-600 rounded-lg shadow-lg z-10 min-w-[200px]"
+                  @click.stop
+                >
+                  <div class="py-1">
+                    <button
+                      v-for="eventType in testEventTypes"
+                      :key="eventType.type"
+                      @click="createTestEvent(eventType.type)"
+                      class="w-full text-left px-4 py-2 hover:bg-gray-700 text-white flex items-center space-x-3 transition-colors"
+                    >
+                      <span class="text-lg">{{ eventType.icon }}</span>
+                      <span>{{ eventType.label }}</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
               <button 
                 @click="refreshEvents" 
                 class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors flex items-center space-x-2"
@@ -404,7 +413,7 @@
 </template>
 
 <script>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, onUnmounted } from 'vue'
 import { apiService } from '../api.js'
 
 export default {
@@ -414,12 +423,23 @@ export default {
     const events = ref([])
     const deletingEvents = ref([])
     const creatingTestEvent = ref(false)
+    const showTestEventDropdown = ref(false)
     const showPayrollModal = ref(false)
     const loadingPayroll = ref(false)
     const payrollData = ref(null)
     const exportingPDF = ref(false)
     const showDeleteModal = ref(false)
     const eventToDelete = ref(null)
+
+    // Test event types configuration
+    const testEventTypes = ref([
+      { type: 'mining', label: 'Mining Operation', icon: '⛏️' },
+      { type: 'salvage', label: 'Salvage Mission', icon: '🔧' },
+      { type: 'combat', label: 'Combat Operation', icon: '⚔️' },
+      { type: 'exploration', label: 'Exploration Mission', icon: '🗺️' },
+      { type: 'trading', label: 'Trading Run', icon: '💰' },
+      { type: 'social', label: 'Social Event', icon: '🎉' }
+    ])
 
     const formatDateTime = (dateString) => {
       if (!dateString) return 'N/A'
@@ -525,12 +545,16 @@ export default {
     }
 
     const createTestEvent = async (eventType) => {
-      if (!['mining', 'salvage'].includes(eventType)) {
+      const validEventTypes = ['mining', 'salvage', 'combat', 'exploration', 'trading', 'social']
+      if (!validEventTypes.includes(eventType)) {
         alert('Invalid event type')
         return
       }
 
+      // Close dropdown and start creation
+      showTestEventDropdown.value = false
       creatingTestEvent.value = true
+
       try {
         const result = await apiService.createTestEvent(eventType)
         console.log(`Test ${eventType} event created:`, result)
@@ -594,9 +618,21 @@ export default {
       }
     }
 
+    // Close dropdown when clicking outside
+    const handleClickOutside = (event) => {
+      showTestEventDropdown.value = false
+    }
+
     onMounted(() => {
       console.log('🎯 Management component mounted successfully!')
       loadEvents()
+      // Add click outside listener
+      document.addEventListener('click', handleClickOutside)
+    })
+
+    onUnmounted(() => {
+      // Clean up click outside listener
+      document.removeEventListener('click', handleClickOutside)
     })
 
     return {
@@ -604,6 +640,8 @@ export default {
       events,
       deletingEvents,
       creatingTestEvent,
+      showTestEventDropdown,
+      testEventTypes,
       showPayrollModal,
       loadingPayroll,
       payrollData,

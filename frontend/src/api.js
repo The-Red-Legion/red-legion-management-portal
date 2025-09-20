@@ -141,13 +141,25 @@ export const apiService = {
     }
   },
 
-  // Admin functions (placeholders for no-auth version)
+  // Admin functions
   async deleteAdminEvent(eventId) {
-    throw new Error('Admin functions not available in no-auth mode')
+    try {
+      const response = await api.delete(`/admin/events/${eventId}`)
+      return response.data
+    } catch (error) {
+      console.error('Error deleting event:', error)
+      throw error
+    }
   },
 
   async createTestEvent(eventType) {
-    throw new Error('Admin functions not available in no-auth mode')
+    try {
+      const response = await api.post(`/admin/create-test-event/${eventType}`)
+      return response.data
+    } catch (error) {
+      console.error('Error creating test event:', error)
+      throw error
+    }
   },
 
   async getPayrollSummary(eventId) {
@@ -156,7 +168,13 @@ export const apiService = {
   },
 
   async exportPayrollAdmin(eventId) {
-    throw new Error('Admin functions not available in no-auth mode')
+    try {
+      const response = await api.get(`/admin/payroll-export/${eventId}`)
+      return response.data
+    } catch (error) {
+      console.error('Error exporting payroll:', error)
+      throw error
+    }
   }
 }
 

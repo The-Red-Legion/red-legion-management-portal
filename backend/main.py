@@ -920,8 +920,9 @@ async def get_payroll_summary(event_id: str):
 @app.post("/mgmt/api/admin/create-test-event/{event_type}")
 async def create_test_event(event_type: str):
     """Create a test event with random participants and data."""
-    if event_type not in ["mining", "salvage"]:
-        raise HTTPException(status_code=400, detail="Event type must be 'mining' or 'salvage'")
+    valid_event_types = ["mining", "salvage", "combat", "exploration", "trading", "social"]
+    if event_type not in valid_event_types:
+        raise HTTPException(status_code=400, detail=f"Event type must be one of: {', '.join(valid_event_types)}")
 
     try:
         pool = await get_db_pool()
@@ -966,7 +967,9 @@ async def create_test_event(event_type: str):
                     "NewSticks", "Saladin80", "Tealstone", "LowNslow", "Ferny133",
                     "Jaeger31", "Blitz0117", "Prometheus114", "RockHound", "CrystalCrafter",
                     "VoidRunner", "AsteroidAce", "QuantumMiner", "StellarSalvage",
-                    "SpaceRanger", "CosmicCrawler", "MetalHarvester", "SystemScanner"
+                    "SpaceRanger", "CosmicCrawler", "MetalHarvester", "SystemScanner",
+                    "FleetCommander", "WingLeader", "TradeCaptain", "ExplorerOne",
+                    "CombatVet", "CargoHauler", "RouteRunner", "DeepSpaceScout"
                 ]
                 organizer_name = random.choice(test_display_names)
                 organizer_id = random.randint(100000000000000000, 999999999999999999)
