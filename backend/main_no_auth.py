@@ -1,8 +1,6 @@
 """
 Red Legion Web Payroll - FastAPI Backend (No Authentication)
 Simple web interface for Discord bot payroll system without OAuth
-
-Updated: 2025-09-20 - Triggering deployment with OAuth completely removed
 """
 
 from fastapi import FastAPI, HTTPException, Request
