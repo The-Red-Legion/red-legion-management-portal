@@ -127,7 +127,7 @@ async def get_events(request: Request):
 
     except Exception as e:
         logger.error(f"Error fetching events: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to fetch events: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to fetch events")
 
 @app.get("/events/{event_id}/participants")
 @app.get("/mgmt/api/events/{event_id}/participants")
@@ -155,6 +155,20 @@ async def get_event_participants(event_id: str):
     except Exception as e:
         logger.error(f"Error fetching participants for {event_id}: {e}")
         raise HTTPException(status_code=500, detail="Failed to fetch participants")
+
+@app.get("/events/scheduled")
+@app.get("/mgmt/api/events/scheduled")
+async def get_scheduled_events():
+    """Get scheduled events (future planned events)."""
+    try:
+        # Current system only tracks active mining sessions (open/closed)
+        # No scheduled events exist in the current unified schema
+        # Return empty array for frontend compatibility
+        return []
+
+    except Exception as e:
+        logger.error(f"Error fetching scheduled events: {e}")
+        raise HTTPException(status_code=500, detail="Failed to fetch scheduled events")
 
 @app.get("/uex-prices")
 @app.get("/mgmt/api/uex-prices")
