@@ -74,7 +74,6 @@ jobs:
         
         # Copy requirements and other config files
         cp requirements.txt deployment-package/
-        cp .env.example deployment-package/
 
     - name: Deploy with GCloud
       run: |
