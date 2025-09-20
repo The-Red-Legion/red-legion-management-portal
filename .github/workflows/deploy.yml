@@ -47,8 +47,8 @@ jobs:
       run: |
         cd frontend
         npm ci
-        # Build with /mgmt base path for management system deployment
-        npm run build -- --base=/mgmt/
+        # Build without base path - main server will proxy /mgmt/ to root
+        npm run build
 
     - name: Create deployment package
       run: |
@@ -160,21 +160,10 @@ jobs:
             root /opt/red-legion-management-portal;
             index index.html;
 
-            # Management portal - serve frontend with /mgmt/ base path
-            location /mgmt/ {
-                alias /opt/red-legion-management-portal/;
-                try_files \$uri \$uri/ /mgmt/index.html;
-
-                # Handle assets with proper caching
-                location ~* \\.(js|css|png|jpg|jpeg|gif|ico|svg|woff2?)\$ {
-                    expires 1y;
-                    add_header Cache-Control \"public, immutable\";
-                }
-            }
-
-            # Exact match for /mgmt (redirect to /mgmt/)
-            location = /mgmt {
-                return 301 /mgmt/;
+            # Serve static assets with caching
+            location ~* \\.(js|css|png|jpg|jpeg|gif|ico|svg|woff2?)\$ {
+                expires 1y;
+                add_header Cache-Control \"public, immutable\";
             }
 
             # API routes - proxy to FastAPI with /api prefix stripped
@@ -213,9 +202,15 @@ jobs:
                 proxy_set_header X-Forwarded-Proto \$scheme;
             }
 
-            # Default root location serves PHP homepage (handled by main server)
+            # Health check endpoint for load balancer
+            location /health-check {
+                return 200 'Management Portal OK';
+                add_header Content-Type text/plain;
+            }
+
+            # Default root location for direct access
             location / {
-                return 404;
+                try_files \$uri \$uri/ /index.html;
             }
         }
         EOF
