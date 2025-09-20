@@ -383,7 +383,8 @@ async def calculate_payroll(event_id: str, request: PayrollCalculateRequest):
         # Get event details
         pool = await get_db_pool()
         if pool is None:
-            raise HTTPException(status_code=500, detail="Database connection failed")
+            # Mock mode - generate test payroll calculation
+            return await generate_mock_payroll_calculation(event_id, request)
 
         async with pool.acquire() as conn:
             # Get event info
@@ -539,16 +540,52 @@ async def finalize_payroll(event_id: str, request: PayrollCalculateRequest):
 
         pool = await get_db_pool()
         if pool is None:
-            raise HTTPException(status_code=500, detail="Database connection failed")
+            # Mock mode - return calculated result with generated payroll_id
+            result["payroll_id"] = f"payroll-{event_id}-{datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S')}"
+            result["status"] = "closed"
+            result["message"] = "Payroll finalized successfully (mock mode)"
+            return result
 
         async with pool.acquire() as conn:
-            # TODO: Implement proper payroll storage using correct database schema
-            # For now, just return the calculated result
-            logger.info(f"Payroll calculation completed for event {event_id}: {len(result['payouts'])} participants")
+            async with conn.transaction():
+                # Generate unique payroll ID
+                payroll_id = f"payroll-{event_id}-{datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S')}"
 
-        # Add a payroll_id for the response
-        result["payroll_id"] = f"payroll-{event_id}-{datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S')}"
-        result["status"] = "finalized"
+                # Insert payroll record
+                await conn.execute("""
+                    INSERT INTO payrolls (
+                        payroll_id, event_id, status, calculation_timestamp,
+                        total_ore_value_auec, total_donated_auec, total_payouts_auec,
+                        total_scu, ore_breakdown, summary_data, created_at
+                    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW())
+                """,
+                    payroll_id, event_id, 'closed', datetime.now(timezone.utc),
+                    result['total_ore_value_auec'], result['total_donated_auec'],
+                    result['total_payouts_auec'], result['total_scu'],
+                    json.dumps(result['ore_breakdown']), json.dumps(result['summary']),
+                )
+
+                # Insert individual payouts
+                for payout in result['payouts']:
+                    await conn.execute("""
+                        INSERT INTO payouts (
+                            payroll_id, user_id, username, display_name,
+                            duration_minutes, participation_percentage, base_payout_auec,
+                            donation_bonus_auec, final_payout_auec, is_donating, is_org_member
+                        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+                    """,
+                        payroll_id, payout['user_id'], payout['username'], payout['display_name'],
+                        payout['duration_minutes'], payout['participation_percentage'],
+                        payout['base_payout'], payout.get('donation_bonus', 0),
+                        payout['final_payout'], payout['is_donating'], payout['is_org_member']
+                    )
+
+                logger.info(f"✅ Payroll {payroll_id} finalized and saved to database: {len(result['payouts'])} participants")
+
+        # Add payroll metadata to response
+        result["payroll_id"] = payroll_id
+        result["status"] = "closed"
+        result["message"] = "Payroll finalized and saved to database"
 
         return result
 
@@ -586,33 +623,46 @@ async def close_event(event_id: str):
             raise HTTPException(status_code=500, detail="Database connection failed")
 
         async with pool.acquire() as conn:
-            # Update event to closed status
-            result = await conn.execute("""
-                UPDATE events
-                SET status = 'closed',
-                    ended_at = NOW(),
-                    updated_at = NOW()
-                WHERE event_id = $1 AND status = 'open'
-            """, event_id)
+            async with conn.transaction():
+                # Update event to closed status
+                result = await conn.execute("""
+                    UPDATE events
+                    SET status = 'closed',
+                        ended_at = NOW(),
+                        updated_at = NOW()
+                    WHERE event_id = $1 AND status = 'open'
+                """, event_id)
 
-            if result == "UPDATE 0":
-                raise HTTPException(status_code=404, detail="Event not found or already closed")
+                if result == "UPDATE 0":
+                    raise HTTPException(status_code=404, detail="Event not found or already closed")
 
-            # Get updated event info
-            event = await conn.fetchrow("""
-                SELECT event_id, event_name, total_participants, total_duration_minutes, status, ended_at
-                FROM events
-                WHERE event_id = $1
-            """, event_id)
+                # Create an open payroll for this event
+                payroll_id = f"payroll-{event_id}-{datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S')}"
+                await conn.execute("""
+                    INSERT INTO payrolls (
+                        payroll_id, event_id, status, created_at
+                    ) VALUES ($1, $2, $3, NOW())
+                """, payroll_id, event_id, 'open')
 
-            return {
-                "event_id": event_id,
-                "status": "closed",
-                "ended_at": event['ended_at'].isoformat() if event['ended_at'] else None,
-                "total_participants": event['total_participants'] or 0,
-                "total_duration_minutes": event['total_duration_minutes'] or 0,
-                "message": f"Event {event_id} has been closed successfully"
-            }
+                # Get updated event info
+                event = await conn.fetchrow("""
+                    SELECT event_id, event_name, total_participants, total_duration_minutes, status, ended_at
+                    FROM events
+                    WHERE event_id = $1
+                """, event_id)
+
+                logger.info(f"✅ Event {event_id} closed and payroll {payroll_id} created with status 'open'")
+
+                return {
+                    "event_id": event_id,
+                    "status": "closed",
+                    "ended_at": event['ended_at'].isoformat() if event['ended_at'] else None,
+                    "total_participants": event['total_participants'] or 0,
+                    "total_duration_minutes": event['total_duration_minutes'] or 0,
+                    "payroll_id": payroll_id,
+                    "payroll_status": "open",
+                    "message": f"Event {event_id} closed and payroll {payroll_id} created (ready for calculations)"
+                }
 
     except Exception as e:
         logger.error(f"Error closing event {event_id}: {e}")
@@ -929,6 +979,131 @@ async def generate_fake_participants(count: int):
         })
 
     return participants
+
+async def generate_mock_payroll_calculation(event_id: str, request: PayrollCalculateRequest):
+    """Generate mock payroll calculation for testing donations."""
+    # Mock event and participants data
+    mock_participants = [
+        {"user_id": 123456789, "username": "TestMiner1", "display_name": "Test Miner One", "duration_minutes": 120, "is_org_member": True},
+        {"user_id": 987654321, "username": "TestMiner2", "display_name": "Test Miner Two", "duration_minutes": 90, "is_org_member": True},
+        {"user_id": 555666777, "username": "TestMiner3", "display_name": "Test Miner Three", "duration_minutes": 60, "is_org_member": True},
+        {"user_id": 111222333, "username": "TestMiner4", "display_name": "Test Miner Four", "duration_minutes": 180, "is_org_member": True},
+    ]
+
+    # Calculate ore values
+    default_prices = {
+        'QUANTAINIUM': 275500.0,
+        'BEXALITE': 10750.0,
+        'TARANITE': 8750.0,
+        'AGRICIUM': 44250.0,
+    }
+
+    total_ore_value = 0
+    ore_breakdown = {}
+
+    for ore_name, quantity in request.ore_quantities.items():
+        ore_upper = ore_name.upper()
+        if request.custom_prices and ore_upper in request.custom_prices:
+            price_per_scu = request.custom_prices[ore_upper]
+        else:
+            price_per_scu = default_prices.get(ore_upper, 10000.0)  # Default fallback
+
+        ore_value = quantity * price_per_scu
+        total_ore_value += ore_value
+        ore_breakdown[ore_upper] = {
+            "quantity": quantity,
+            "price_per_scu": price_per_scu,
+            "total_value": ore_value
+        }
+
+    # Calculate payouts with donation logic
+    total_participation_time = sum(p['duration_minutes'] for p in mock_participants)
+    payouts = []
+    total_donated = 0
+
+    logger.info(f"💰 Mock payroll calculation for {event_id}:")
+    logger.info(f"  - Total participants: {len(mock_participants)}")
+    logger.info(f"  - Donating user IDs received: {request.donating_users}")
+    logger.info(f"  - Total ore value: {total_ore_value:,.2f} aUEC")
+
+    for participant in mock_participants:
+        user_id_str = str(participant['user_id'])
+        time_percentage = participant['duration_minutes'] / total_participation_time
+        base_payout = total_ore_value * time_percentage
+
+        # Check if user is donating their share
+        is_donating = user_id_str in request.donating_users
+        logger.info(f"  - {participant['username']} (ID: {user_id_str}): {base_payout:.2f} aUEC, donating: {is_donating}")
+
+        if is_donating:
+            total_donated += base_payout
+            final_payout = 0
+        else:
+            final_payout = base_payout
+
+        payouts.append({
+            "user_id": participant['user_id'],
+            "username": participant['username'],
+            "display_name": participant['display_name'],
+            "duration_minutes": participant['duration_minutes'],
+            "participation_minutes": participant['duration_minutes'],
+            "time_percentage": round(time_percentage * 100, 2),
+            "participation_percentage": round(time_percentage * 100, 2),
+            "base_payout": round(base_payout, 2),
+            "is_donating": is_donating,
+            "final_payout": round(final_payout, 2),
+            "final_payout_auec": round(final_payout, 2),
+            "is_org_member": participant['is_org_member']
+        })
+
+    # Redistribute donations among non-donating participants
+    non_donating_participants = [p for p in payouts if not p['is_donating']]
+    logger.info(f"🎁 Mock donation redistribution:")
+    logger.info(f"  - Total donated: {total_donated:,.2f} aUEC")
+    logger.info(f"  - Non-donating participants: {len(non_donating_participants)}")
+
+    if non_donating_participants and total_donated > 0:
+        donation_per_person = total_donated / len(non_donating_participants)
+        logger.info(f"  - Donation per person: {donation_per_person:,.2f} aUEC")
+
+        for payout in payouts:
+            if not payout['is_donating']:
+                payout['donation_bonus'] = round(donation_per_person, 2)
+                new_final_payout = round(payout['final_payout'] + donation_per_person, 2)
+                payout['final_payout'] = new_final_payout
+                payout['final_payout_auec'] = new_final_payout
+                logger.info(f"    + {payout['username']}: {payout['final_payout']:.2f} aUEC (base: {payout['base_payout']:.2f} + bonus: {donation_per_person:.2f})")
+            else:
+                payout['donation_bonus'] = 0
+                logger.info(f"    - {payout['username']}: 0 aUEC (donated)")
+    else:
+        logger.info(f"  - No redistribution needed")
+        for payout in payouts:
+            payout['donation_bonus'] = 0
+
+    # Calculate summary
+    total_payouts = sum(p['final_payout'] for p in payouts)
+    total_scu = sum(request.ore_quantities.values())
+
+    return {
+        "event_id": event_id,
+        "event_name": f"Mock Event {event_id}",
+        "calculation_timestamp": datetime.now(timezone.utc).isoformat(),
+        "total_ore_value_auec": round(total_ore_value, 2),
+        "total_value_auec": round(total_ore_value, 2),
+        "total_donated_auec": round(total_donated, 2),
+        "total_payouts_auec": round(total_payouts, 2),
+        "total_scu": round(total_scu, 2),
+        "ore_breakdown": ore_breakdown,
+        "payouts": payouts,
+        "summary": {
+            "total_participants": len(mock_participants),
+            "donating_participants": len([p for p in payouts if p['is_donating']]),
+            "total_participation_minutes": total_participation_time,
+            "average_payout": round(total_payouts / len(payouts), 2) if payouts else 0
+        },
+        "mock_mode": True
+    }
 
 @app.delete("/admin/events/{event_id}")
 @app.delete("/mgmt/api/admin/events/{event_id}")
