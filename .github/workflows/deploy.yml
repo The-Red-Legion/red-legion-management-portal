@@ -99,9 +99,9 @@ jobs:
           sudo -u ubuntu python3 -m venv venv
           sudo -u ubuntu ./venv/bin/pip install -r requirements.txt
 
-          # Create environment file with URL-encoded DATABASE_URL
+          # Create environment file
           sudo tee /opt/red-legion-management-portal/.env > /dev/null <<EOF
-        DATABASE_URL='postgresql://arccorp_sys_admin:cFY%23Bh%2AO%3B%3CAM%3FlGvvyw%26IugwI8P%2C4%7B%3BB@10.92.0.3:5432/red_legion_arccorp_data_store'
+        DATABASE_URL='${{ secrets.DATABASE_URL }}'
         BOT_API_URL='${{ secrets.BOT_API_INTERNAL_URL }}'
         DOMAIN_NAME='${{ secrets.DOMAIN_NAME }}'
         DISCORD_CLIENT_ID='${{ secrets.DISCORD_CLIENT_ID }}'
