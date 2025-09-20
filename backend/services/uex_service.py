@@ -17,17 +17,30 @@ class UEXService:
         """Get current UEX ore prices from bot API with fallback and status info."""
         try:
             async with httpx.AsyncClient(timeout=10.0) as client:
-                response = await client.get(f"{self.bot_api_url}/api/uex-prices")
+                response = await client.get(f"{self.bot_api_url}/prices/current")
                 if response.status_code == 200:
                     data = response.json()
                     logger.info("✅ UEX prices fetched from live API")
-                    return {
-                        "prices": data,
-                        "source": "live_api",
-                        "status": "connected",
-                        "message": "Live UEX prices from bot API",
-                        "last_updated": datetime.now().isoformat()
-                    }
+
+                    # Extract just the price values from the Discord bot API response
+                    if "prices" in data and data.get("success"):
+                        price_dict = {material: info["price"] for material, info in data["prices"].items()}
+                        return {
+                            "prices": price_dict,
+                            "source": "live_api",
+                            "status": "connected",
+                            "message": "Live UEX prices from bot API",
+                            "last_updated": data.get("timestamp", datetime.now().isoformat())
+                        }
+                    else:
+                        logger.warning("⚠️ Invalid response format from bot API, using fallback")
+                        return {
+                            "prices": self.get_fallback_uex_prices(),
+                            "source": "fallback",
+                            "status": "api_error",
+                            "message": "Invalid bot API response format - using fallback prices",
+                            "last_updated": datetime.now().isoformat()
+                        }
                 else:
                     logger.warning(f"⚠️ UEX API returned {response.status_code}, using fallback")
                     return {
@@ -251,7 +264,7 @@ class UEXService:
         try:
             # Try to trigger cache refresh via the bot API
             async with httpx.AsyncClient(timeout=30.0) as client:
-                response = await client.post(f"{self.bot_api_url}/api/refresh-uex-cache")
+                response = await client.post(f"{self.bot_api_url}/prices/refresh")
                 if response.status_code == 200:
                     refresh_data = response.json()
                     logger.info("✅ Successfully triggered UEX cache refresh via bot API")
