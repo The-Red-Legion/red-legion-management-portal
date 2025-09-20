@@ -9,13 +9,11 @@
 
 <script>
 import { ref, onMounted } from 'vue'
-import LoginPage from '../components/LoginPage.vue'
 import PayrollWizard from '../components/PayrollWizard.vue'
 
 export default {
   name: 'Home',
   components: {
-    LoginPage,
     PayrollWizard
   },
   props: {
