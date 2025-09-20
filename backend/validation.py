@@ -4,7 +4,8 @@ Provides comprehensive validation for all user inputs to prevent security vulner
 """
 
 import re
-from typing import Optional, List, Any, Union
+from typing import Optional, List, Any, Union, Dict
+from datetime import datetime
 from pydantic import BaseModel, Field, field_validator
 from fastapi import HTTPException
 import logging
@@ -169,6 +170,32 @@ class ChannelAddRequest(BaseModel):
     @field_validator('channel_name')
     def validate_channel_name(cls, v):
         return validate_text_input(v, "Channel name", min_length=1, max_length=100)
+
+class EventCreationRequest(BaseModel):
+    """Request model for creating events."""
+    event_name: str = Field(..., min_length=3, max_length=100, description="Event name")
+    organizer_name: str = Field(..., min_length=2, max_length=50, description="Organizer name")
+    organizer_id: Optional[str] = Field(None, pattern=r'^\d{17,19}$', description="Discord organizer ID")
+    guild_id: Optional[str] = Field("814699481912049704", pattern=r'^\d{17,19}$', description="Discord guild ID")
+    event_type: str = Field("mining", pattern=r'^(mining|salvage|combat|training)$', description="Event type")
+    location_notes: Optional[str] = Field(None, max_length=500, description="Location notes")
+    session_notes: Optional[str] = Field(None, max_length=1000, description="Session notes")
+    scheduled_start_time: Optional[datetime] = Field(None, description="Scheduled start time")
+    auto_start_enabled: bool = Field(False, description="Auto-start enabled")
+    tracked_channels: Optional[List[Dict[str, Any]]] = Field(None, description="Tracked Discord channels")
+    primary_channel_id: Optional[int] = Field(None, ge=100000000000000000, le=999999999999999999, description="Primary Discord channel ID")
+
+    @field_validator('tracked_channels')
+    def validate_tracked_channels(cls, v):
+        if v is not None:
+            if len(v) > 20:
+                raise ValueError("Too many tracked channels (max 20)")
+            for channel in v:
+                if not isinstance(channel, dict):
+                    raise ValueError("Each tracked channel must be a dictionary")
+                if 'id' not in channel or 'name' not in channel:
+                    raise ValueError("Each tracked channel must have 'id' and 'name' fields")
+        return v
 
 # Security validation helpers
 
