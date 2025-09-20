@@ -156,7 +156,7 @@ jobs:
           sudo systemctl daemon-reload
 
           # Configure nginx on management portal VM to serve frontend and proxy API calls
-          sudo tee /etc/nginx/sites-available/management-portal > /dev/null <<'NGINX_EOF'
+          cat > /tmp/nginx-config << 'EOF'
         server {
             listen 80;
             server_name _;
@@ -166,12 +166,12 @@ jobs:
             # Serve frontend assets
             location /assets/ {
                 expires 1y;
-                add_header Cache-Control "public, immutable";
+                add_header Cache-Control \"public, immutable\";
             }
 
             location /static/ {
                 expires 1y;
-                add_header Cache-Control "public, immutable";
+                add_header Cache-Control \"public, immutable\";
             }
 
             # API routes - proxy to FastAPI
@@ -202,7 +202,8 @@ jobs:
                 try_files \$uri \$uri/ /index.html;
             }
         }
-        NGINX_EOF
+        EOF
+          sudo cp /tmp/nginx-config /etc/nginx/sites-available/management-portal
 
           # Enable nginx site
           sudo rm -f /etc/nginx/sites-enabled/default
