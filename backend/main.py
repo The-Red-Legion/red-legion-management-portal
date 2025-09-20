@@ -423,10 +423,13 @@ async def calculate_payroll(event_id: str, request: PayrollCalculateRequest):
                 "username": participant['username'],
                 "display_name": participant['display_name'],
                 "duration_minutes": participant['duration_minutes'],
+                "participation_minutes": participant['duration_minutes'],  # Frontend expects this field name
                 "time_percentage": round(time_percentage * 100, 2),
+                "participation_percentage": round(time_percentage * 100, 2),  # Frontend expects this field name
                 "base_payout": round(base_payout, 2),
                 "is_donating": is_donating,
                 "final_payout": round(final_payout, 2),
+                "final_payout_auec": round(final_payout, 2),  # Frontend expects this field name
                 "is_org_member": participant['is_org_member']
             })
 
@@ -438,7 +441,9 @@ async def calculate_payroll(event_id: str, request: PayrollCalculateRequest):
             for payout in payouts:
                 if not payout['is_donating']:
                     payout['donation_bonus'] = round(donation_per_person, 2)
-                    payout['final_payout'] = round(payout['final_payout'] + donation_per_person, 2)
+                    new_final_payout = round(payout['final_payout'] + donation_per_person, 2)
+                    payout['final_payout'] = new_final_payout
+                    payout['final_payout_auec'] = new_final_payout  # Keep both fields in sync
                 else:
                     payout['donation_bonus'] = 0
 
