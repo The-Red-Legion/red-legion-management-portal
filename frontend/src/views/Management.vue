@@ -595,6 +595,7 @@ export default {
     }
 
     onMounted(() => {
+      console.log('🎯 Management component mounted successfully!')
       loadEvents()
     })
 
