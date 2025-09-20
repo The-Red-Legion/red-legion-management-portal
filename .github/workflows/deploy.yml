@@ -48,7 +48,7 @@ jobs:
         cd frontend
         npm ci
         # Build with base path for reverse proxy deployment
-        npm run build -- --base=/management/
+        npm run build -- --base=/mgmt/
 
     - name: Create deployment package
       run: |
@@ -63,7 +63,7 @@ jobs:
         # Copy built frontend to root of deployment package (nginx will serve from here)
         cp -r frontend/dist/* deployment-package/
 
-        # Note: Vite build with --base=/management/ handles base path and asset URLs correctly
+        # Note: Vite build with --base=/mgmt/ handles base path and asset URLs correctly
 
         # Create static directory and copy logo
         mkdir -p deployment-package/static
@@ -236,5 +236,5 @@ jobs:
       run: |
         echo "🎉 Management Portal Deployment completed successfully!"
         echo "Internal access: http://34.55.83.147:8000"
-        echo "External access: http://dev.redlegion.gg/management/"
+        echo "External access: http://dev.redlegion.gg/mgmt/"
         echo "Frontend and backend are both running with nginx reverse proxy configured"
