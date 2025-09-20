@@ -47,8 +47,8 @@ jobs:
       run: |
         cd frontend
         npm ci
-        # Build without base path since serving from root domain
-        npm run build
+        # Build with /payroll base path for subdirectory deployment
+        npm run build -- --base=/payroll/
 
     - name: Create deployment package
       run: |
@@ -160,15 +160,21 @@ jobs:
             root /opt/red-legion-management-portal;
             index index.html;
 
-            # Serve frontend assets
-            location /assets/ {
-                expires 1y;
-                add_header Cache-Control \"public, immutable\";
+            # Payroll management portal - serve frontend with /payroll/ base path
+            location /payroll/ {
+                alias /opt/red-legion-management-portal/;
+                try_files \$uri \$uri/ /payroll/index.html;
+
+                # Handle assets with proper caching
+                location ~* \\.(js|css|png|jpg|jpeg|gif|ico|svg|woff2?)\$ {
+                    expires 1y;
+                    add_header Cache-Control \"public, immutable\";
+                }
             }
 
-            location /static/ {
-                expires 1y;
-                add_header Cache-Control \"public, immutable\";
+            # Exact match for /payroll (redirect to /payroll/)
+            location = /payroll {
+                return 301 /payroll/;
             }
 
             # API routes - proxy to FastAPI with /api prefix stripped
@@ -207,9 +213,9 @@ jobs:
                 proxy_set_header X-Forwarded-Proto \$scheme;
             }
 
-            # Serve frontend for all other routes (SPA routing)
+            # Default root location serves PHP homepage (handled by main server)
             location / {
-                try_files \$uri \$uri/ /index.html;
+                return 404;
             }
         }
         EOF
@@ -249,5 +255,5 @@ jobs:
       run: |
         echo "🎉 Management Portal Deployment completed successfully!"
         echo "Internal access: http://34.55.83.147:8000"
-        echo "External access: http://dev.redlegion.gg/mgmt/"
+        echo "External access: http://dev.redlegion.gg/payroll/"
         echo "Frontend and backend are both running with nginx reverse proxy configured"
