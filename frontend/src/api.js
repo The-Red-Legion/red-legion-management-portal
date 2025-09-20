@@ -2,7 +2,7 @@ import axios from 'axios'
 
 // Use current domain for API calls in production, localhost for development
 const API_BASE_URL = import.meta.env.MODE === 'production'
-  ? '/api'  // Use relative path for production (nginx will proxy to backend)
+  ? '/mgmt/api'  // Use /mgmt/api path for production (nginx will proxy to backend)
   : 'http://localhost:8000'
 
 const api = axios.create({
