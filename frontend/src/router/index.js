@@ -8,18 +8,22 @@ import AccessDenied from '../views/AccessDenied.vue'
 const routes = [
   {
     path: '/',
-    name: 'Home',
-    component: Home
-  },
-  {
-    path: '/management',
     name: 'Management',
     component: Management
+  },
+  {
+    path: '/payroll',
+    name: 'Payroll',
+    component: Home
   },
   {
     path: '/events',
     name: 'Events',
     component: Events
+  },
+  {
+    path: '/management',
+    redirect: '/'
   },
   {
     path: '/logout-confirmation',

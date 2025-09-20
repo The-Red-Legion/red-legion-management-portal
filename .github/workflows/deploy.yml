@@ -47,8 +47,8 @@ jobs:
       run: |
         cd frontend
         npm ci
-        # Build with /payroll base path for subdirectory deployment
-        npm run build -- --base=/payroll/
+        # Build with /mgmt base path for management system deployment
+        npm run build -- --base=/mgmt/
 
     - name: Create deployment package
       run: |
@@ -160,10 +160,10 @@ jobs:
             root /opt/red-legion-management-portal;
             index index.html;
 
-            # Payroll management portal - serve frontend with /payroll/ base path
-            location /payroll/ {
+            # Management portal - serve frontend with /mgmt/ base path
+            location /mgmt/ {
                 alias /opt/red-legion-management-portal/;
-                try_files \$uri \$uri/ /payroll/index.html;
+                try_files \$uri \$uri/ /mgmt/index.html;
 
                 # Handle assets with proper caching
                 location ~* \\.(js|css|png|jpg|jpeg|gif|ico|svg|woff2?)\$ {
@@ -172,9 +172,9 @@ jobs:
                 }
             }
 
-            # Exact match for /payroll (redirect to /payroll/)
-            location = /payroll {
-                return 301 /payroll/;
+            # Exact match for /mgmt (redirect to /mgmt/)
+            location = /mgmt {
+                return 301 /mgmt/;
             }
 
             # API routes - proxy to FastAPI with /api prefix stripped
@@ -255,5 +255,6 @@ jobs:
       run: |
         echo "🎉 Management Portal Deployment completed successfully!"
         echo "Internal access: http://34.55.83.147:8000"
-        echo "External access: http://dev.redlegion.gg/payroll/"
+        echo "External access: http://dev.redlegion.gg/mgmt/"
+        echo "Management system routes: /mgmt/ (main), /mgmt/payroll, /mgmt/events"
         echo "Frontend and backend are both running with nginx reverse proxy configured"
