@@ -6,13 +6,13 @@ import Events from '../views/Events.vue'
 const routes = [
   {
     path: '/',
-    name: 'Management',
-    component: Management
-  },
-  {
-    path: '/payroll',
     name: 'Payroll',
     component: Home
+  },
+  {
+    path: '/management',
+    name: 'Management',
+    component: Management
   },
   {
     path: '/events',
@@ -20,7 +20,7 @@ const routes = [
     component: Events
   },
   {
-    path: '/management',
+    path: '/payroll',
     redirect: '/'
   }
 ]
