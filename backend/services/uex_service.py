@@ -12,6 +12,17 @@ class UEXService:
 
     def __init__(self, bot_api_url: str):
         self.bot_api_url = bot_api_url
+        self._cached_prices = None
+        self._cache_timestamp = None
+
+    async def initialize_cache(self):
+        """Initialize the price cache with current data from Discord bot."""
+        try:
+            # Try to get initial prices to populate cache
+            await self.get_uex_prices()
+            logger.info("✅ UEX price cache initialized")
+        except Exception as e:
+            logger.warning(f"⚠️ Could not initialize UEX price cache: {e}")
 
     async def get_uex_prices(self) -> Dict[str, Any]:
         """Get current UEX ore prices from bot API with fallback and status info."""
@@ -25,66 +36,97 @@ class UEXService:
                     # Extract just the price values from the Discord bot API response
                     if "prices" in data and data.get("success"):
                         price_dict = {material: info["price"] for material, info in data["prices"].items()}
+
+                        # Cache the successful response for future fallback use
+                        self._cached_prices = price_dict
+                        self._cache_timestamp = data.get("timestamp", datetime.now().isoformat())
+
                         return {
                             "prices": price_dict,
                             "source": "live_api",
                             "status": "connected",
                             "message": "Live UEX prices from bot API",
-                            "last_updated": data.get("timestamp", datetime.now().isoformat())
+                            "last_updated": self._cache_timestamp
                         }
                     else:
                         logger.warning("⚠️ Invalid response format from bot API, using fallback")
                         return {
-                            "prices": self.get_fallback_uex_prices(),
-                            "source": "fallback",
+                            "prices": self.get_dynamic_fallback_prices(),
+                            "source": "cached_fallback",
                             "status": "api_error",
-                            "message": "Invalid bot API response format - using fallback prices",
-                            "last_updated": datetime.now().isoformat()
+                            "message": "Invalid bot API response format - using cached fallback prices",
+                            "last_updated": self._cache_timestamp or datetime.now().isoformat()
                         }
                 else:
                     logger.warning(f"⚠️ UEX API returned {response.status_code}, using fallback")
                     return {
-                        "prices": self.get_fallback_uex_prices(),
-                        "source": "fallback",
+                        "prices": self.get_dynamic_fallback_prices(),
+                        "source": "cached_fallback",
                         "status": "api_error",
-                        "message": f"UEX API error {response.status_code} - using fallback prices",
-                        "last_updated": datetime.now().isoformat()
+                        "message": f"UEX API error {response.status_code} - using cached fallback prices",
+                        "last_updated": self._cache_timestamp or datetime.now().isoformat()
                     }
         except Exception as e:
             logger.error(f"❌ Error fetching UEX prices: {e}")
             return {
-                "prices": self.get_fallback_uex_prices(),
-                "source": "fallback",
+                "prices": self.get_dynamic_fallback_prices(),
+                "source": "cached_fallback",
                 "status": "disconnected",
-                "message": f"UEX API unavailable - using fallback prices",
+                "message": f"UEX API unavailable - using cached fallback prices",
                 "error": str(e),
-                "last_updated": datetime.now().isoformat()
+                "last_updated": self._cache_timestamp or datetime.now().isoformat()
             }
 
     def get_fallback_uex_prices(self) -> Dict[str, float]:
-        """Fallback UEX prices when API is unavailable."""
+        """Static fallback UEX prices when no cached data is available (last resort)."""
         return {
-            'QUANTAINIUM': 17500.0,
-            'BEXALITE': 8500.0,
-            'BORASE': 8200.0,
-            'TARANITE': 7500.0,
-            'LARANITE': 5200.0,
-            'AGRICIUM': 4200.0,
-            'HEPHAESTANITE': 3800.0,
-            'HADANITE': 3500.0,
-            'APHORITE': 3200.0,
-            'DOLIVINE': 3000.0,
-            'TITANIUM': 8.50,
-            'DIAMOND': 7.40,
-            'GOLD': 6.20,
-            'COPPER': 4.80,
-            'BERYL': 4.60,
-            'TUNGSTEN': 4.20,
-            'CORUNDUM': 3.50,
-            'QUARTZ': 1.90,
-            'ALUMINUM': 1.20,
+            'QUANTAINIUM': 22210.0,
+            'BEXALITE': 6729.0,
+            'BORASE': 3059.0,
+            'TARANITE': 8718.0,
+            'LARANITE': 2606.0,
+            'AGRICIUM': 2349.0,
+            'HEPHAESTANITE': 2334.0,
+            'HADANITE': 3500.0,  # Not in live data, keeping previous
+            'APHORITE': 3200.0,  # Not in live data, keeping previous
+            'DOLIVINE': 3000.0,  # Not in live data, keeping previous
+            'TITANIUM': 447.0,
+            'DIAMOND': 7.40,     # Not in live data, keeping previous
+            'GOLD': 5858.0,
+            'COPPER': 342.0,
+            'BERYL': 2559.0,
+            'TUNGSTEN': 606.0,
+            'CORUNDUM': 351.0,
+            'QUARTZ': 368.0,
+            'ALUMINUM': 293.0,
+            'ASTATINE': 1637.0,  # New from live data
+            'IRON': 376.0,      # New from live data
+            'SILICON': 198.0,   # New from live data
+            'TIN': 320.0,       # New from live data
+            'STILERON': 29243.0, # New from live data
+            'RICCITE': 20728.0,  # New from live data
+            'GOLDEN MEDMON': 19766.0, # New from live data
+            'HEXAPOLYMESH COATING': 1.0, # New from live data
             'INERT_MATERIALS': 0.01
         }
+
+    def get_dynamic_fallback_prices(self) -> Dict[str, float]:
+        """Get fallback prices - use cached prices if available, otherwise static fallback."""
+        if self._cached_prices:
+            cache_age_hours = 0
+            if self._cache_timestamp:
+                try:
+                    cache_time = datetime.fromisoformat(self._cache_timestamp.replace('Z', '+00:00'))
+                    cache_age = datetime.now() - cache_time.replace(tzinfo=None)
+                    cache_age_hours = cache_age.total_seconds() / 3600
+                except:
+                    pass
+
+            logger.info(f"🔄 Using cached UEX prices (cache age: {cache_age_hours:.1f} hours)")
+            return self._cached_prices
+        else:
+            logger.warning("⚠️ No cached prices available, using static fallback")
+            return self.get_fallback_uex_prices()
 
     def get_best_selling_locations(self) -> Dict[str, Dict[str, str]]:
         """Get best selling locations for different materials."""

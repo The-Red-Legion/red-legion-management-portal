@@ -14,6 +14,13 @@ router = APIRouter()
 BOT_API_URL = os.getenv("BOT_API_URL", "http://localhost:8001")
 uex_service = UEXService(BOT_API_URL)
 
+# Initialize cache on startup
+async def init_uex_cache():
+    await uex_service.initialize_cache()
+
+# This will be called by the main app startup
+router.add_event_handler("startup", init_uex_cache)
+
 @router.get("/uex-prices")
 @router.get("/mgmt/api/uex-prices")
 async def get_uex_prices_endpoint():
