@@ -155,7 +155,7 @@ jobs:
           # Configure nginx on management portal VM to serve frontend and proxy API calls
           cat > /tmp/nginx-config << 'EOF'
         server {
-            listen 80;
+            listen 8080;
             server_name _;
             root /opt/red-legion-management-portal;
             index index.html;
@@ -240,16 +240,17 @@ jobs:
           curl -f http://127.0.0.1:8000/ping || echo 'Backend not responding on localhost'
 
           echo '=== Testing Frontend Connectivity ==='
-          curl -f http://127.0.0.1/ | head -5 || echo 'Frontend not responding on localhost'
+          curl -f http://127.0.0.1:8080/ | head -5 || echo 'Frontend not responding on localhost:8080'
 
           echo '=== Port Check ==='
           sudo netstat -tlnp | grep :8000 || echo 'Port 8000 not listening'
+          sudo netstat -tlnp | grep :8080 || echo 'Port 8080 not listening'
         "
 
     - name: Verify deployment
       run: |
         echo "🎉 Management Portal Deployment completed successfully!"
-        echo "Internal access: http://34.55.83.147:8000"
-        echo "External access: http://dev.redlegion.gg/mgmt/"
-        echo "Management system routes: /mgmt/ (main), /mgmt/payroll, /mgmt/events"
-        echo "Frontend and backend are both running with nginx reverse proxy configured"
+        echo "Backend API: http://34.55.83.147:8000"
+        echo "Management Portal: http://dev.redlegion.gg:8080"
+        echo "Routes: / (Management), /payroll, /events"
+        echo "PHP site can redirect to port 8080 for management portal access"
