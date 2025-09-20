@@ -405,6 +405,12 @@ async def calculate_payroll(event_id: str, request: PayrollCalculateRequest):
         payouts = []
         total_donated = 0
 
+        # Debug logging for donation logic
+        logger.info(f"💰 Payroll calculation for {event_id}:")
+        logger.info(f"  - Total participants: {len(participants)}")
+        logger.info(f"  - Donating user IDs received: {request.donating_users}")
+        logger.info(f"  - Total ore value: {total_ore_value:,.2f} aUEC")
+
         for participant in participants:
             user_id_str = str(participant['user_id'])
             time_percentage = participant['duration_minutes'] / total_participation_time
@@ -412,6 +418,8 @@ async def calculate_payroll(event_id: str, request: PayrollCalculateRequest):
 
             # Check if user is donating their share
             is_donating = user_id_str in request.donating_users
+
+            logger.info(f"  - {participant['username']} (ID: {user_id_str}): {base_payout:.2f} aUEC, donating: {is_donating}")
 
             if is_donating:
                 total_donated += base_payout
@@ -437,16 +445,28 @@ async def calculate_payroll(event_id: str, request: PayrollCalculateRequest):
         # Redistribute donations among non-donating participants
         non_donating_participants = [p for p in payouts if not p['is_donating']]
 
+        logger.info(f"🎁 Donation redistribution:")
+        logger.info(f"  - Total donated: {total_donated:,.2f} aUEC")
+        logger.info(f"  - Non-donating participants: {len(non_donating_participants)}")
+
         if non_donating_participants and total_donated > 0:
             donation_per_person = total_donated / len(non_donating_participants)
+            logger.info(f"  - Donation per person: {donation_per_person:,.2f} aUEC")
+
             for payout in payouts:
                 if not payout['is_donating']:
                     payout['donation_bonus'] = round(donation_per_person, 2)
                     new_final_payout = round(payout['final_payout'] + donation_per_person, 2)
                     payout['final_payout'] = new_final_payout
                     payout['final_payout_auec'] = new_final_payout  # Keep both fields in sync
+                    logger.info(f"    + {payout['username']}: {payout['final_payout']:.2f} aUEC (base: {payout['base_payout']:.2f} + bonus: {donation_per_person:.2f})")
                 else:
                     payout['donation_bonus'] = 0
+                    logger.info(f"    - {payout['username']}: 0 aUEC (donated)")
+        else:
+            logger.info(f"  - No redistribution needed")
+            for payout in payouts:
+                payout['donation_bonus'] = 0
 
         # Calculate summary
         total_payouts = sum(p['final_payout'] for p in payouts)
