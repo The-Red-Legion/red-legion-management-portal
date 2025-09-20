@@ -336,11 +336,11 @@
             <h3 class="text-xl font-semibold text-white mb-4">Payroll Summary</h3>
             <div class="grid grid-cols-1 md:grid-cols-4 gap-6">
               <div class="text-center">
-                <div class="text-2xl font-bold text-red-legion-500">{{ payrollResult.total_value_auec.toLocaleString() }}</div>
+                <div class="text-2xl font-bold text-red-legion-500">{{ (payrollResult.total_value_auec || 0).toLocaleString() }}</div>
                 <div class="text-space-gray-400 text-sm">Total Value (aUEC)</div>
               </div>
               <div class="text-center">
-                <div class="text-2xl font-bold text-purple-500">{{ (payrollResult.total_scu || totalSCU).toLocaleString() }}</div>
+                <div class="text-2xl font-bold text-purple-500">{{ (payrollResult.total_scu || totalSCU || 0).toLocaleString() }}</div>
                 <div class="text-space-gray-400 text-sm">Total SCU</div>
               </div>
               <div class="text-center">
@@ -373,15 +373,15 @@
                 <div class="space-y-1">
                   <div class="flex justify-between">
                     <span class="text-space-gray-400 text-sm">Quantity:</span>
-                    <span class="text-blue-400 font-mono">{{ quantity.toLocaleString() }}</span>
+                    <span class="text-blue-400 font-mono">{{ (quantity || 0).toLocaleString() }}</span>
                   </div>
                   <div class="flex justify-between">
                     <span class="text-space-gray-400 text-sm">Price per unit:</span>
-                    <span class="text-purple-400 font-mono">{{ getEffectivePrice(material).toLocaleString() }} aUEC</span>
+                    <span class="text-purple-400 font-mono">{{ (getEffectivePrice(material) || 0).toLocaleString() }} aUEC</span>
                   </div>
                   <div class="flex justify-between border-t border-space-gray-600 pt-1">
                     <span class="text-white text-sm font-medium">Total Value:</span>
-                    <span class="text-green-400 font-mono font-bold">{{ (quantity * getEffectivePrice(material)).toLocaleString() }} aUEC</span>
+                    <span class="text-green-400 font-mono font-bold">{{ ((quantity || 0) * (getEffectivePrice(material) || 0)).toLocaleString() }} aUEC</span>
                   </div>
                 </div>
               </div>
@@ -409,8 +409,8 @@
                   <tr v-for="payout in payrollResult.payouts" :key="payout.user_id" class="border-b border-space-gray-700">
                     <td class="py-3 text-white">{{ payout.username }}</td>
                     <td class="py-3 text-right text-space-gray-300">{{ payout.participation_minutes }}m</td>
-                    <td class="py-3 text-right text-space-gray-300">{{ payout.participation_percentage.toFixed(1) }}%</td>
-                    <td class="py-3 text-right text-green-500 font-mono">{{ payout.final_payout_auec.toLocaleString() }}</td>
+                    <td class="py-3 text-right text-space-gray-300">{{ (payout.participation_percentage || 0).toFixed(1) }}%</td>
+                    <td class="py-3 text-right text-green-500 font-mono">{{ (payout.final_payout_auec || 0).toLocaleString() }}</td>
                   </tr>
                 </tbody>
               </table>
@@ -873,7 +873,7 @@ export default {
         
         alert(`Payroll ${result.payroll_id} has been finalized and saved to database!\n\n` +
               `Event: ${selectedEvent.value.event_id}\n` +
-              `Total Value: ${payrollResult.value.total_value_auec.toLocaleString()} aUEC\n` +
+              `Total Value: ${(payrollResult.value.total_value_auec || 0).toLocaleString()} aUEC\n` +
               `Payouts: ${payrollResult.value.payouts.length} participants`)
         
         // Reset to home screen after successful archiving

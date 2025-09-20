@@ -54,6 +54,7 @@ async def get_event_participants(event_id: str):
             return []
 
         async with pool.acquire() as conn:
+            # First get the participants with their individual durations
             participants = await conn.fetch("""
                 SELECT DISTINCT ON (user_id)
                     id as participant_id, user_id, username, display_name,
@@ -63,7 +64,29 @@ async def get_event_participants(event_id: str):
                 ORDER BY user_id, joined_at ASC
             """, event_id)
 
-            return [dict(participant) for participant in participants]
+            # Calculate total duration for percentage calculation
+            total_duration = sum(p['duration_minutes'] for p in participants if p['duration_minutes'])
+
+            # Build response with the expected field names
+            result = []
+            for participant in participants:
+                duration_mins = participant['duration_minutes'] or 0
+                percentage = (duration_mins / total_duration * 100) if total_duration > 0 else 0
+
+                result.append({
+                    'participant_id': participant['participant_id'],
+                    'user_id': participant['user_id'],
+                    'username': participant['username'],
+                    'display_name': participant['display_name'],
+                    'joined_at': participant['joined_at'],
+                    'left_at': participant['left_at'],
+                    'duration_minutes': duration_mins,
+                    'participation_minutes': duration_mins,  # Frontend expects this field name
+                    'participation_percentage': round(percentage, 1),  # Frontend expects this field name
+                    'is_organizer': participant['is_organizer']
+                })
+
+            return result
 
     except Exception as e:
         logger.error(f"Error fetching participants for {event_id}: {e}")
