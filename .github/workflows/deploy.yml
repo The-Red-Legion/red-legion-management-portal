@@ -47,7 +47,8 @@ jobs:
       run: |
         cd frontend
         npm ci
-        npm run build
+        # Build with base path for reverse proxy deployment
+        npm run build -- --base=/management/
 
     - name: Create deployment package
       run: |
@@ -62,11 +63,7 @@ jobs:
         # Copy built frontend to root of deployment package (nginx will serve from here)
         cp -r frontend/dist/* deployment-package/
 
-        # Fix asset paths to use relative URLs for reverse proxy compatibility
-        sed -i 's|href="/assets/|href="assets/|g; s|src="/assets/|src="assets/|g; s|href="/static/|href="static/|g' deployment-package/index.html
-
-        # Add base tag for proper routing through reverse proxy
-        sed -i 's|<head>|<head>\n    <base href="/management/">|' deployment-package/index.html
+        # Note: Vite build with --base=/management/ handles base path and asset URLs correctly
 
         # Create static directory and copy logo
         mkdir -p deployment-package/static
