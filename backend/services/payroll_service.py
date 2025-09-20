@@ -46,13 +46,19 @@ class PayrollService:
                         "participants": []
                     }
 
-                # Calculate total value and distribute payroll
+                # Calculate total ore value using actual quantities and prices
                 total_ore_value = 0
+                if ore_quantities and custom_prices:
+                    for material, quantity in ore_quantities.items():
+                        if material in custom_prices and quantity > 0:
+                            total_ore_value += quantity * custom_prices[material]
+
                 total_duration = sum(p['duration_minutes'] for p in participants)
 
-                # Mock calculation for now - in real implementation this would
-                # use UEX prices and ore quantities
-                base_rate_per_minute = 1000  # Credits per minute
+                # Calculate non-donating participants and their total duration
+                non_donating_participants = [p for p in participants
+                                           if not (donating_users and str(p['user_id']) in donating_users)]
+                non_donating_duration = sum(p['duration_minutes'] for p in non_donating_participants)
 
                 payroll_data = []
                 for participant in participants:
@@ -60,9 +66,12 @@ class PayrollService:
                         # Donating users get 0 payout
                         payout = 0.0
                     else:
-                        # Calculate proportional payout based on time
-                        time_ratio = participant['duration_minutes'] / total_duration if total_duration > 0 else 0
-                        payout = base_rate_per_minute * participant['duration_minutes']
+                        # Calculate proportional payout based on time among non-donating participants
+                        if non_donating_duration > 0 and total_ore_value > 0:
+                            time_ratio = participant['duration_minutes'] / non_donating_duration
+                            payout = total_ore_value * time_ratio
+                        else:
+                            payout = 0.0
 
                     payroll_data.append({
                         "user_id": str(participant['user_id']),
@@ -73,6 +82,7 @@ class PayrollService:
                         "is_donating": donating_users and str(participant['user_id']) in donating_users
                     })
 
+                # Total payout distributed (excluding donations)
                 total_payout = sum(p['payout'] for p in payroll_data)
 
                 return {
@@ -84,6 +94,7 @@ class PayrollService:
                     "total_duration_minutes": total_duration,
                     "total_ore_value": total_ore_value,
                     "total_payout": total_payout,
+                    "total_value_auec": total_ore_value,  # For frontend compatibility
                     "participants": payroll_data,
                     "ore_quantities": ore_quantities,
                     "custom_prices": custom_prices or {},

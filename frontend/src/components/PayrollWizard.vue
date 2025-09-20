@@ -769,9 +769,17 @@ export default {
       try {
         // Get default prices
         defaultPrices.value = await apiService.getUexPrices()
-        
-        // Prepare prices
-        const prices = useCustomPrices.value ? customPrices.value : null
+
+        // Prepare prices - always send effective prices for calculation
+        let prices = {}
+        if (useCustomPrices.value) {
+          prices = customPrices.value
+        } else {
+          // Use effective prices (default UEX prices or location-specific)
+          for (const material of materialsWithQuantities.value) {
+            prices[material] = getEffectivePrice(material)
+          }
+        }
         
         // Prepare donation data
         const donatingUsers = Object.entries(participantDonations.value)
@@ -881,7 +889,16 @@ export default {
           .filter(([userId, isDonating]) => isDonating)
           .map(([userId]) => String(userId)) // Ensure user_id is converted to string
         
-        const prices = useCustomPrices.value ? customPrices.value : null
+        // Prepare prices - always send effective prices for calculation
+        let prices = {}
+        if (useCustomPrices.value) {
+          prices = customPrices.value
+        } else {
+          // Use effective prices (default UEX prices or location-specific)
+          for (const material of materialsWithQuantities.value) {
+            prices[material] = getEffectivePrice(material)
+          }
+        }
         
         const result = await apiService.finalizePayroll(
           selectedEvent.value.event_id,
