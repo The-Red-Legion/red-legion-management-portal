@@ -206,11 +206,20 @@ class UEXService:
 
         # Apply location modifiers using numeric IDs
         location_modifiers = {
-            4: 1.0,     # Orison - Base prices
+            # Stanton System - Major Trading Hubs
             1: 0.95,    # Area 18 - Slightly lower
             2: 0.90,    # Lorville - Lower prices
             3: 0.92,    # New Babbage - Moderate
-            5: 0.85,    # Port Olisar - Lowest prices
+            4: 1.0,     # Orison - Base prices (best for most materials)
+            # Stanton System - Space Stations & Outposts
+            5: 0.85,    # Port Olisar - Lower prices
+            6: 0.80,    # Grim HEX - Lower outpost prices
+            7: 0.88,    # Everus Harbor - Refinery station
+            8: 0.87,    # Baijini Point - Orbital station
+            # Pyro System - Frontier pricing
+            10: 0.75,   # Ruin Station - Lower frontier prices
+            11: 0.70,   # Checkmate Co-op - Mining cooperative
+            12: 0.65,   # Shady Glen - Frontier settlement
         }
 
         modifier = location_modifiers.get(location_id, 1.0)
@@ -221,7 +230,13 @@ class UEXService:
             2: "Lorville (Hurston)",
             3: "New Babbage (microTech)",
             4: "Orison (Crusader)",
-            5: "Port Olisar (Crusader)"
+            5: "Port Olisar (Crusader)",
+            6: "Grim HEX (Yela)",
+            7: "Everus Harbor (Hurston)",
+            8: "Baijini Point (microTech)",
+            10: "Ruin Station (Pyro I)",
+            11: "Checkmate Co-op (Pyro III)",
+            12: "Shady Glen (Pyro IV)"
         }
 
         location_name = location_names.get(location_id, f"Location {location_id}")
@@ -261,42 +276,98 @@ class UEXService:
         }
 
     async def get_trading_locations(self) -> List[Dict[str, Any]]:
-        """Get list of trading locations."""
+        """Get list of trading locations across Stanton and Pyro systems."""
         return [
+            # Stanton System - Major Trading Hubs
             {
                 "id": 1,
                 "name": "Area 18",
                 "system": "Stanton",
                 "planet": "ArcCorp",
-                "type": "Trading Hub"
+                "type": "Trading Hub",
+                "description": "ArcCorp's primary commercial center"
             },
             {
                 "id": 2,
                 "name": "Lorville",
                 "system": "Stanton",
                 "planet": "Hurston",
-                "type": "Trading Hub"
+                "type": "Trading Hub",
+                "description": "Hurston Dynamics corporate headquarters"
             },
             {
                 "id": 3,
                 "name": "New Babbage",
                 "system": "Stanton",
                 "planet": "microTech",
-                "type": "Trading Hub"
+                "type": "Trading Hub",
+                "description": "microTech's technological hub"
             },
             {
                 "id": 4,
                 "name": "Orison",
                 "system": "Stanton",
                 "planet": "Crusader",
-                "type": "Trading Hub"
+                "type": "Trading Hub",
+                "description": "Floating city in Crusader's clouds"
             },
+            # Stanton System - Space Stations
             {
                 "id": 5,
                 "name": "Port Olisar",
                 "system": "Stanton",
                 "planet": "Crusader",
-                "type": "Space Station"
+                "type": "Space Station",
+                "description": "Crusader orbital station"
+            },
+            {
+                "id": 6,
+                "name": "Grim HEX",
+                "system": "Stanton",
+                "planet": "Yela (Crusader)",
+                "type": "Outpost",
+                "description": "Asteroid mining station"
+            },
+            {
+                "id": 7,
+                "name": "Everus Harbor",
+                "system": "Stanton",
+                "planet": "Hurston",
+                "type": "Space Station",
+                "description": "Hurston orbital refinery"
+            },
+            {
+                "id": 8,
+                "name": "Baijini Point",
+                "system": "Stanton",
+                "planet": "microTech",
+                "type": "Space Station",
+                "description": "microTech orbital station"
+            },
+            # Pyro System - Major Locations
+            {
+                "id": 10,
+                "name": "Ruin Station",
+                "system": "Pyro",
+                "planet": "Pyro I",
+                "type": "Trading Hub",
+                "description": "Primary trading hub in Pyro system"
+            },
+            {
+                "id": 11,
+                "name": "Checkmate Co-op",
+                "system": "Pyro",
+                "planet": "Pyro III",
+                "type": "Outpost",
+                "description": "Mining cooperative station"
+            },
+            {
+                "id": 12,
+                "name": "Shady Glen",
+                "system": "Pyro",
+                "planet": "Pyro IV",
+                "type": "Outpost",
+                "description": "Frontier settlement"
             }
         ]
 
