@@ -73,11 +73,12 @@ class PayrollService:
 
                 for participant in participants:
                     user_id_str = str(participant['user_id'])
-                    is_donating = donating_users and user_id_str in donating_users
+                    username = participant['username']
+                    is_donating = donating_users and username in donating_users
 
                     if is_donating:
                         donating_share_total += base_shares[user_id_str]
-                        logger.info(f"🔍 Debug - {participant['username']} is donating share: {base_shares[user_id_str]}")
+                        logger.info(f"🔍 Debug - {username} is donating share: {base_shares[user_id_str]}")
                     else:
                         non_donating_users.append(user_id_str)
 
@@ -99,18 +100,19 @@ class PayrollService:
                 payroll_data = []
                 for participant in participants:
                     user_id_str = str(participant['user_id'])
-                    is_donating = donating_users and user_id_str in donating_users
+                    username = participant['username']
+                    is_donating = donating_users and username in donating_users
 
                     if is_donating:
                         payout = 0.0  # Donating users get 0
                     else:
                         payout = base_shares[user_id_str]  # Non-donating users get their share + redistributed amount
 
-                    logger.info(f"🔍 Debug - Final payout for {participant['username']}: {payout} (donating: {is_donating})")
+                    logger.info(f"🔍 Debug - Final payout for {username}: {payout} (donating: {is_donating})")
 
                     payroll_data.append({
                         "user_id": user_id_str,
-                        "username": participant['username'],
+                        "username": username,
                         "display_name": participant['display_name'],
                         "duration_minutes": participant['duration_minutes'],
                         "payout": round(payout),  # Round to whole numbers as requested

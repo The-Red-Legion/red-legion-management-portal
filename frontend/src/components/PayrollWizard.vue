@@ -787,20 +787,13 @@ export default {
           }
         }
         
-        // Prepare donation data - convert usernames to user_ids
-        const donatingUsernames = Object.entries(participantDonations.value)
+        // Prepare donation data - send usernames directly (much simpler!)
+        const donatingUsers = Object.entries(participantDonations.value)
           .filter(([username, isDonating]) => isDonating)
-          .map(([username]) => username)
+          .map(([username]) => username) // Just send the username, no conversion needed!
 
-        // Convert usernames to current user_ids
-        const donatingUsers = donatingUsernames.map(username => {
-          const participant = eventParticipants.value.find(p => p.username === username)
-          return participant ? String(participant.user_id) : null
-        }).filter(Boolean) // Remove any null values
-        
         // Debug logging
-        console.log('🔍 Debug - Donating usernames:', donatingUsernames)
-        console.log('🔍 Debug - Donating user IDs being sent:', donatingUsers)
+        console.log('🔍 Debug - Donating usernames being sent:', donatingUsers)
         
         // Calculate payroll
         const result = await apiService.calculatePayroll(
