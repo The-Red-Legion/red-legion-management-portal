@@ -297,7 +297,7 @@
                   </div>
                   <div class="col-span-2">
                     <span class="text-space-gray-400 mb-3 block">Ore Breakdown:</span>
-                    <div v-if="payrollData.ore_quantities && Object.keys(payrollData.ore_quantities).some(ore => payrollData.ore_quantities[ore] > 0)" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    <div v-if="payrollData.ore_quantities && Object.keys(payrollData.ore_quantities).length > 0 && Object.keys(payrollData.ore_quantities).some(ore => payrollData.ore_quantities[ore] > 0)" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                       <div
                         v-for="(quantity, ore) in payrollData.ore_quantities"
                         v-if="quantity > 0"
