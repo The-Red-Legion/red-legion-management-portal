@@ -798,20 +798,33 @@ export default {
         const missingFromParticipants = donationKeys.filter(id => !participantUserIds.includes(id))
         const missingFromDonations = participantUserIds.filter(id => !donationKeys.includes(id))
 
+        console.log('🔍 Debug - Donation keys (user IDs):', donationKeys)
+        console.log('🔍 Debug - Current participant user IDs:', participantUserIds)
         console.log('🔍 Debug - User IDs in donations but not in participants:', missingFromParticipants)
         console.log('🔍 Debug - User IDs in participants but not in donations:', missingFromDonations)
 
-        if (missingFromParticipants.length > 0) {
-          console.warn('⚠️ WARNING: Donation data contains stale user IDs that no longer exist in participants!')
+        if (missingFromParticipants.length > 0 || missingFromDonations.length > 0) {
+          console.warn('⚠️ WARNING: Donation data is out of sync with current participants!')
           console.warn('⚠️ This will cause donations to be ignored. Refreshing donation data...')
 
-          // Clear stale donation data and rebuild it
+          // Save current donation states (true/false) mapped by username instead of user_id
+          const donationsByUsername = {}
+          for (const participant of eventParticipants.value) {
+            const oldUserId = donationKeys.find(id => {
+              // Try to match by finding the participant with same username
+              const oldParticipant = eventParticipants.value.find(p => String(p.user_id) === id)
+              return oldParticipant && oldParticipant.username === participant.username
+            })
+            donationsByUsername[participant.username] = oldUserId ? participantDonations.value[oldUserId] : false
+          }
+
+          // Clear stale donation data and rebuild it with current user IDs
           participantDonations.value = {}
           eventParticipants.value.forEach(participant => {
-            participantDonations.value[participant.user_id] = false
+            participantDonations.value[participant.user_id] = donationsByUsername[participant.username] || false
           })
 
-          console.log('✅ Donation data refreshed. Please try again.')
+          console.log('✅ Donation data refreshed with current user IDs. Please try again.')
           return
         }
         
