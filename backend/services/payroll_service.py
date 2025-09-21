@@ -209,7 +209,7 @@ class PayrollService:
             async with self.db_pool.acquire() as conn:
                 # Get event details
                 event = await conn.fetchrow("""
-                    SELECT event_id, event_name, organizer_name, status, ended_at,
+                    SELECT event_id, event_name, event_type, organizer_name, status, ended_at,
                            total_participants, total_duration_minutes
                     FROM events WHERE event_id = $1
                 """, event_id)
@@ -231,6 +231,7 @@ class PayrollService:
                 return {
                     "event_id": event_id,
                     "event_name": event['event_name'],
+                    "event_type": event['event_type'],
                     "organizer": event['organizer_name'],
                     "event_status": event['status'],
                     "ended_at": event['ended_at'].isoformat() if event['ended_at'] else None,
