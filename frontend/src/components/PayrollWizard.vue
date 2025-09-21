@@ -259,7 +259,7 @@
                   <div class="flex items-center space-x-3">
                     <input
                       :id="`donate-${participant.user_id}`"
-                      v-model="participantDonations[participant.user_id]"
+                      v-model="participantDonations[participant.username]"
                       type="checkbox"
                       class="w-4 h-4 text-red-legion-600 bg-space-gray-600 border-space-gray-500 rounded focus:ring-red-legion-500 focus:ring-2"
                     />
@@ -742,10 +742,10 @@ export default {
           try {
             eventParticipants.value = await apiService.getEventParticipants(selectedEvent.value.event_id)
             participantsLoaded.value = true
-            // Initialize donation checkboxes (all unchecked by default)
+            // Initialize donation checkboxes (all unchecked by default) - use usernames for stability
             const newDonations = {}
             eventParticipants.value.forEach(participant => {
-              newDonations[participant.user_id] = false
+              newDonations[participant.username] = false
             })
             participantDonations.value = newDonations
           } catch (error) {
@@ -781,52 +781,20 @@ export default {
           }
         }
         
-        // Prepare donation data
-        const donatingUsers = Object.entries(participantDonations.value)
-          .filter(([userId, isDonating]) => isDonating)
-          .map(([userId]) => String(userId)) // Ensure user_id is converted to string
+        // Prepare donation data - convert usernames to user_ids
+        const donatingUsernames = Object.entries(participantDonations.value)
+          .filter(([username, isDonating]) => isDonating)
+          .map(([username]) => username)
+
+        // Convert usernames to current user_ids
+        const donatingUsers = donatingUsernames.map(username => {
+          const participant = eventParticipants.value.find(p => p.username === username)
+          return participant ? String(participant.user_id) : null
+        }).filter(Boolean) // Remove any null values
         
         // Debug logging
-        console.log('🔍 Debug - Participant donations object:', participantDonations.value)
-        console.log('🔍 Debug - Donating users being sent (as strings):', donatingUsers)
-        console.log('🔍 Debug - Event participants:', eventParticipants.value)
-        console.log('🔍 Debug - Participant user_ids:', eventParticipants.value.map(p => ({ username: p.username, user_id: p.user_id, user_id_type: typeof p.user_id, user_id_string: String(p.user_id) })))
-
-        // Debug: Check for user ID mismatches
-        const donationKeys = Object.keys(participantDonations.value)
-        const participantUserIds = eventParticipants.value.map(p => String(p.user_id))
-        const missingFromParticipants = donationKeys.filter(id => !participantUserIds.includes(id))
-        const missingFromDonations = participantUserIds.filter(id => !donationKeys.includes(id))
-
-        console.log('🔍 Debug - Donation keys (user IDs):', donationKeys)
-        console.log('🔍 Debug - Current participant user IDs:', participantUserIds)
-        console.log('🔍 Debug - User IDs in donations but not in participants:', missingFromParticipants)
-        console.log('🔍 Debug - User IDs in participants but not in donations:', missingFromDonations)
-
-        if (missingFromParticipants.length > 0 || missingFromDonations.length > 0) {
-          console.warn('⚠️ WARNING: Donation data is out of sync with current participants!')
-          console.warn('⚠️ This will cause donations to be ignored. Refreshing donation data...')
-
-          // Save current donation states (true/false) mapped by username instead of user_id
-          const donationsByUsername = {}
-          for (const participant of eventParticipants.value) {
-            const oldUserId = donationKeys.find(id => {
-              // Try to match by finding the participant with same username
-              const oldParticipant = eventParticipants.value.find(p => String(p.user_id) === id)
-              return oldParticipant && oldParticipant.username === participant.username
-            })
-            donationsByUsername[participant.username] = oldUserId ? participantDonations.value[oldUserId] : false
-          }
-
-          // Clear stale donation data and rebuild it with current user IDs
-          participantDonations.value = {}
-          eventParticipants.value.forEach(participant => {
-            participantDonations.value[participant.user_id] = donationsByUsername[participant.username] || false
-          })
-
-          console.log('✅ Donation data refreshed with current user IDs. Please try again.')
-          return
-        }
+        console.log('🔍 Debug - Donating usernames:', donatingUsernames)
+        console.log('🔍 Debug - Donating user IDs being sent:', donatingUsers)
         
         // Calculate payroll
         const result = await apiService.calculatePayroll(
