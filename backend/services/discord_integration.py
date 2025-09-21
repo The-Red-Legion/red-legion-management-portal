@@ -81,7 +81,7 @@ class DiscordBotClient:
             
             async with aiohttp.ClientSession() as session:
                 async with session.post(
-                    f"{self.base_url}/events/start",
+                    f"{self.base_url}/events/{request_data.event_id}/start-tracking",
                     json=request_data.dict(),
                     headers={"Content-Type": "application/json"},
                     timeout=aiohttp.ClientTimeout(total=self.timeout)
@@ -118,7 +118,7 @@ class DiscordBotClient:
             
             async with aiohttp.ClientSession() as session:
                 async with session.post(
-                    f"{self.base_url}/events/{event_id}/stop",
+                    f"{self.base_url}/events/{event_id}/stop-tracking",
                     timeout=aiohttp.ClientTimeout(total=self.timeout)
                 ) as response:
                     response_data = await response.json()
