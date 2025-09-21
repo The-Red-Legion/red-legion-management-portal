@@ -234,7 +234,7 @@
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
                 </svg>
-                <span>{{ exportingPDF ? 'Exporting...' : 'Export Data' }}</span>
+                <span>{{ exportingPDF ? 'Generating PDF...' : 'Export PDF' }}</span>
               </button>
               <button @click="showPayrollModal = false" class="text-space-gray-400 hover:text-white transition-colors">
                 <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -295,9 +295,9 @@
                     <span class="text-space-gray-400">Status:</span>
                     <span class="ml-2 text-green-400">Finalized</span>
                   </div>
-                  <div v-if="payrollData.ore_quantities && Object.keys(payrollData.ore_quantities).length > 0" class="col-span-2">
+                  <div class="col-span-2">
                     <span class="text-space-gray-400 mb-3 block">Ore Breakdown:</span>
-                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    <div v-if="payrollData.ore_quantities && Object.keys(payrollData.ore_quantities).some(ore => payrollData.ore_quantities[ore] > 0)" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                       <div
                         v-for="(quantity, ore) in payrollData.ore_quantities"
                         v-if="quantity > 0"
@@ -323,6 +323,11 @@
                           </div>
                         </div>
                       </div>
+                    </div>
+                    <div v-else class="text-center py-8 text-space-gray-400">
+                      <div class="text-4xl mb-2">📊</div>
+                      <p>No ore quantities recorded for this event</p>
+                      <p class="text-sm text-space-gray-500 mt-1">Payroll calculated without ore data</p>
                     </div>
                   </div>
                 </div>
@@ -624,22 +629,34 @@ export default {
 
       exportingPDF.value = true
       try {
-        const data = await apiService.exportPayroll(payrollData.value.event_id)
+        // Call server-side PDF generation endpoint
+        const response = await fetch(`/mgmt/api/payroll/${payrollData.value.event_id}/pdf`, {
+          method: 'GET',
+          headers: {
+            'Accept': 'application/pdf'
+          }
+        })
 
-        // Create formatted JSON for download
-        const formattedData = JSON.stringify(data, null, 2)
-        const blob = new Blob([formattedData], { type: 'application/json' })
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`)
+        }
+
+        // Get the PDF blob from response
+        const blob = await response.blob()
+
+        // Create download link
         const url = window.URL.createObjectURL(blob)
         const a = document.createElement('a')
         a.href = url
-        a.download = `payroll_${payrollData.value.event_id}.json`
+        a.download = `payroll_summary_${payrollData.value.event_id}.pdf`
         document.body.appendChild(a)
         a.click()
         document.body.removeChild(a)
         window.URL.revokeObjectURL(url)
+
       } catch (error) {
-        console.error('Failed to export payroll data:', error)
-        alert('Failed to export payroll data. Please try again.')
+        console.error('Failed to generate PDF:', error)
+        alert('Failed to generate PDF. Please try again.')
       } finally {
         exportingPDF.value = false
       }
