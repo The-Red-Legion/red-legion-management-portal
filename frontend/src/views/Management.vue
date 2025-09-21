@@ -281,7 +281,7 @@
                 <div class="grid grid-cols-2 gap-4 text-sm">
                   <div>
                     <span class="text-space-gray-400">Total Payout:</span>
-                    <span class="ml-2 text-green-400 font-mono">{{ formatCurrency(payrollData.statistics.total_payout_auec) }} aUEC</span>
+                    <span class="ml-2 text-green-400 font-mono">{{ formatCurrency(payrollData.total_payout) }} aUEC</span>
                   </div>
                   <div>
                     <span class="text-space-gray-400">Average Payout:</span>
@@ -612,11 +612,11 @@ export default {
       payrollData.value = null
 
       try {
-        const data = await apiService.getPayrollSummary(eventId)
+        const data = await apiService.exportPayroll(eventId)
         payrollData.value = data
       } catch (error) {
-        console.error('Failed to load payroll summary:', error)
-        alert('Failed to load payroll summary. Please try again.')
+        console.error('Failed to load payroll data:', error)
+        alert('Failed to load payroll data. Please try again.')
       } finally {
         loadingPayroll.value = false
       }
@@ -627,14 +627,14 @@ export default {
 
       exportingPDF.value = true
       try {
-        const data = await apiService.exportPayroll(payrollData.value.event.event_id)
+        const data = await apiService.exportPayroll(payrollData.value.event_id)
         
         // Create blob from the response data
         const blob = new Blob([JSON.stringify(data)], { type: 'application/pdf' })
         const url = window.URL.createObjectURL(blob)
         const a = document.createElement('a')
         a.href = url
-        a.download = `payroll_${payrollData.value.event.event_id}.pdf`
+        a.download = `payroll_${payrollData.value.event_id}.pdf`
         document.body.appendChild(a)
         a.click()
         document.body.removeChild(a)
