@@ -261,29 +261,46 @@ async def close_event(event_id: str):
                     WHERE event_id = $3
                 """, totals['total_participants'], totals['total_duration_minutes'], event_id)
 
-                # Create payroll session
+                # Create payroll record using bot schema
                 payroll_id = f"pr-{event_id}"
                 await conn.execute("""
-                    INSERT INTO payroll_sessions (
-                        payroll_id, event_id, status, created_at, updated_at
-                    ) VALUES ($1, $2, 'open', NOW(), NOW())
+                    INSERT INTO payrolls (
+                        payroll_id, event_id, total_scu_collected, total_value_auec,
+                        ore_prices_used, mining_yields, calculated_by_id, calculated_by_name
+                    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
                     ON CONFLICT (payroll_id) DO UPDATE SET
-                        status = 'open', updated_at = NOW()
-                """, payroll_id, event_id)
+                        total_scu_collected = EXCLUDED.total_scu_collected,
+                        total_value_auec = EXCLUDED.total_value_auec,
+                        ore_prices_used = EXCLUDED.ore_prices_used,
+                        mining_yields = EXCLUDED.mining_yields
+                """, payroll_id, event_id,
+                    0,  # total_scu_collected (will be updated when finalized)
+                    0.0,  # total_value_auec (will be updated when finalized)
+                    '{}',  # ore_prices_used (empty until finalized)
+                    '{}',  # mining_yields (empty until finalized)
+                    0,  # calculated_by_id (placeholder)
+                    "Management Portal"  # calculated_by_name
+                )
 
-                logger.info(f"✅ Event {event_id} closed and payroll {payroll_id} created with status 'open'")
+                logger.info(f"✅ Event {event_id} closed and payroll {payroll_id} created")
 
                 # Stop voice tracking via bot API
                 bot_integration_result = await trigger_voice_tracking_on_event_stop(event_id)
 
+                # Get updated event data for response
+                updated_event = await conn.fetchrow("""
+                    SELECT total_participants, total_duration_minutes, ended_at
+                    FROM events WHERE event_id = $1
+                """, event_id)
+
                 return {
                     "event_id": event_id,
                     "status": "closed",
-                    "ended_at": event['ended_at'].isoformat() if event['ended_at'] else None,
-                    "total_participants": event['total_participants'] or 0,
-                    "total_duration_minutes": event['total_duration_minutes'] or 0,
+                    "ended_at": updated_event['ended_at'].isoformat() if updated_event['ended_at'] else None,
+                    "total_participants": updated_event['total_participants'] or 0,
+                    "total_duration_minutes": updated_event['total_duration_minutes'] or 0,
                     "payroll_id": payroll_id,
-                    "payroll_status": "open",
+                    "payroll_status": "created",
                     "message": f"Event {event_id} closed and payroll {payroll_id} created (ready for calculations)",
                     "discord_integration": bot_integration_result
                 }

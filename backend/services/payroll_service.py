@@ -158,21 +158,41 @@ class PayrollService:
                 # Create or update payroll session
                 payroll_id = f"pr-{event_id}"
 
+                # Create payroll record using bot schema
                 await conn.execute("""
-                    INSERT INTO payroll_sessions (
-                        payroll_id, event_id, status, total_payout, ore_quantities,
-                        custom_prices, donating_users, created_at, updated_at
-                    ) VALUES ($1, $2, 'finalized', $3, $4, $5, $6, NOW(), NOW())
+                    INSERT INTO payrolls (
+                        payroll_id, event_id, total_scu_collected, total_value_auec,
+                        ore_prices_used, mining_yields, calculated_by_id, calculated_by_name
+                    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
                     ON CONFLICT (payroll_id) DO UPDATE SET
-                        status = 'finalized',
-                        total_payout = EXCLUDED.total_payout,
-                        ore_quantities = EXCLUDED.ore_quantities,
-                        custom_prices = EXCLUDED.custom_prices,
-                        donating_users = EXCLUDED.donating_users,
-                        updated_at = NOW()
-                """, payroll_id, event_id, calculation["total_payout"],
-                    json.dumps(ore_quantities), json.dumps(custom_prices or {}),
-                    json.dumps(donating_users or []))
+                        total_scu_collected = EXCLUDED.total_scu_collected,
+                        total_value_auec = EXCLUDED.total_value_auec,
+                        ore_prices_used = EXCLUDED.ore_prices_used,
+                        mining_yields = EXCLUDED.mining_yields
+                """, payroll_id, event_id,
+                    sum(ore_quantities.values()) if ore_quantities else 0,  # total_scu_collected
+                    calculation["total_payout"],  # total_value_auec
+                    json.dumps(custom_prices or {}),  # ore_prices_used
+                    json.dumps(ore_quantities or {}),  # mining_yields
+                    0,  # calculated_by_id (placeholder)
+                    "Management Portal"  # calculated_by_name
+                )
+
+                # Create individual payout records
+                for participant in calculation["participants"]:
+                    await conn.execute("""
+                        INSERT INTO payouts (
+                            payroll_id, user_id, username, participation_minutes,
+                            base_payout_auec, final_payout_auec, is_donor
+                        ) VALUES ($1, $2, $3, $4, $5, $6, $7)
+                        ON CONFLICT (payroll_id, user_id) DO UPDATE SET
+                            participation_minutes = EXCLUDED.participation_minutes,
+                            base_payout_auec = EXCLUDED.base_payout_auec,
+                            final_payout_auec = EXCLUDED.final_payout_auec,
+                            is_donor = EXCLUDED.is_donor
+                    """, payroll_id, int(participant["user_id"]), participant["username"],
+                        participant["duration_minutes"], participant["payout"],
+                        participant["payout"], participant["is_donating"])
 
                 return {
                     "success": True,
@@ -199,10 +219,10 @@ class PayrollService:
                 if not event:
                     raise ValueError(f"Event {event_id} not found")
 
-                # Get payroll session if exists
+                # Get payroll if exists
                 payroll = await conn.fetchrow("""
-                    SELECT payroll_id, status, total_payout, created_at, updated_at
-                    FROM payroll_sessions WHERE event_id = $1
+                    SELECT payroll_id, total_value_auec, calculated_at
+                    FROM payrolls WHERE event_id = $1
                 """, event_id)
 
                 # Get participants count
@@ -218,11 +238,11 @@ class PayrollService:
                     "ended_at": event['ended_at'].isoformat() if event['ended_at'] else None,
                     "total_participants": participant_count or 0,
                     "total_duration_minutes": event['total_duration_minutes'] or 0,
-                    "payroll_status": payroll['status'] if payroll else "not_created",
+                    "payroll_status": "finalized" if payroll else "not_created",
                     "payroll_id": payroll['payroll_id'] if payroll else None,
-                    "total_payout": float(payroll['total_payout']) if payroll else 0.0,
-                    "payroll_created_at": payroll['created_at'].isoformat() if payroll else None,
-                    "payroll_updated_at": payroll['updated_at'].isoformat() if payroll else None
+                    "total_payout": float(payroll['total_value_auec']) if payroll else 0.0,
+                    "payroll_created_at": payroll['calculated_at'].isoformat() if payroll else None,
+                    "payroll_updated_at": payroll['calculated_at'].isoformat() if payroll else None
                 }
 
         except Exception as e:
@@ -233,54 +253,58 @@ class PayrollService:
         """Export payroll data for an event."""
         try:
             async with self.db_pool.acquire() as conn:
-                # Get payroll session
+                # Get payroll record using bot schema
                 payroll = await conn.fetchrow("""
-                    SELECT payroll_id, status, total_payout, ore_quantities,
-                           custom_prices, donating_users, created_at
-                    FROM payroll_sessions WHERE event_id = $1
+                    SELECT payroll_id, total_value_auec, ore_prices_used,
+                           mining_yields, calculated_at
+                    FROM payrolls WHERE event_id = $1
                 """, event_id)
 
                 if not payroll:
                     return {"success": False, "error": "No payroll found for this event"}
 
-                # Get participants with payroll data
+                # Get payout records from the payouts table
+                payouts = await conn.fetch("""
+                    SELECT user_id, username, participation_minutes,
+                           final_payout_auec, is_donor
+                    FROM payouts WHERE payroll_id = $1
+                    ORDER BY final_payout_auec DESC
+                """, payroll['payroll_id'])
+
+                # Get additional participant data from participation table
                 participants = await conn.fetch("""
-                    SELECT p.user_id, p.username, p.display_name, p.duration_minutes,
-                           p.is_org_member
-                    FROM participation p
-                    WHERE p.event_id = $1 AND p.duration_minutes > 0
-                    ORDER BY p.duration_minutes DESC
+                    SELECT DISTINCT ON (user_id)
+                        user_id, username, display_name, duration_minutes, is_org_member
+                    FROM participation
+                    WHERE event_id = $1 AND duration_minutes > 0
+                    ORDER BY user_id, joined_at DESC
                 """, event_id)
 
-                # Calculate individual payouts (simplified)
-                total_duration = sum(p['duration_minutes'] for p in participants)
-                base_rate = 1000
-                donating_users = json.loads(payroll['donating_users'] or '[]')
+                # Create lookup for display names
+                participant_lookup = {p['username']: p for p in participants}
 
                 participant_data = []
-                for p in participants:
-                    is_donating = str(p['user_id']) in donating_users
-                    payout = 0.0 if is_donating else base_rate * p['duration_minutes']
+                for payout in payouts:
+                    participant = participant_lookup.get(payout['username'], {})
 
                     participant_data.append({
-                        "user_id": str(p['user_id']),
-                        "username": p['username'],
-                        "display_name": p['display_name'],
-                        "duration_minutes": p['duration_minutes'],
-                        "payout": payout,
-                        "is_donating": is_donating
+                        "user_id": str(payout['user_id']),
+                        "username": payout['username'],
+                        "display_name": participant.get('display_name', payout['username']),
+                        "duration_minutes": payout['participation_minutes'],
+                        "payout": float(payout['final_payout_auec']),
+                        "is_donating": payout['is_donor']
                     })
 
                 return {
                     "success": True,
                     "payroll_id": payroll['payroll_id'],
                     "event_id": event_id,
-                    "status": payroll['status'],
-                    "total_payout": float(payroll['total_payout']),
+                    "total_payout": float(payroll['total_value_auec']),
                     "participants": participant_data,
-                    "created_at": payroll['created_at'].isoformat(),
-                    "ore_quantities": json.loads(payroll['ore_quantities'] or '{}'),
-                    "custom_prices": json.loads(payroll['custom_prices'] or '{}')
+                    "created_at": payroll['calculated_at'].isoformat(),
+                    "ore_quantities": json.loads(payroll['mining_yields'] or '{}'),
+                    "custom_prices": json.loads(payroll['ore_prices_used'] or '{}')
                 }
 
         except Exception as e:
