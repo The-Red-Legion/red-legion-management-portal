@@ -178,6 +178,9 @@ class PayrollService:
                     "Management Portal"  # calculated_by_name
                 )
 
+                # Delete existing payout records for this payroll (in case of re-calculation)
+                await conn.execute("DELETE FROM payouts WHERE payroll_id = $1", payroll_id)
+
                 # Create individual payout records
                 for participant in calculation["participants"]:
                     await conn.execute("""
@@ -185,11 +188,6 @@ class PayrollService:
                             payroll_id, user_id, username, participation_minutes,
                             base_payout_auec, final_payout_auec, is_donor
                         ) VALUES ($1, $2, $3, $4, $5, $6, $7)
-                        ON CONFLICT (payroll_id, user_id) DO UPDATE SET
-                            participation_minutes = EXCLUDED.participation_minutes,
-                            base_payout_auec = EXCLUDED.base_payout_auec,
-                            final_payout_auec = EXCLUDED.final_payout_auec,
-                            is_donor = EXCLUDED.is_donor
                     """, payroll_id, int(participant["user_id"]), participant["username"],
                         participant["duration_minutes"], participant["payout"],
                         participant["payout"], participant["is_donating"])
