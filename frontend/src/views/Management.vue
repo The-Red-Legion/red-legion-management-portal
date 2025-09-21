@@ -252,8 +252,8 @@
               <!-- Event Overview -->
               <div class="bg-space-gray-700 rounded-lg p-4">
                 <h3 class="text-lg font-semibold text-white mb-3">
-                  <span class="mr-2">{{ payrollData.event_type === 'mining' ? '⛏️' : '🔧' }}</span>
-                  {{ payrollData.event_name }}
+                  <span class="mr-2">⛏️</span>
+                  Event {{ payrollData.event_id }}
                 </h3>
                 <div class="grid grid-cols-2 gap-4 text-sm">
                   <div>
@@ -261,16 +261,16 @@
                     <code class="ml-2 text-yellow-400">{{ payrollData.event_id }}</code>
                   </div>
                   <div>
-                    <span class="text-space-gray-400">Organizer:</span>
-                    <span class="ml-2 text-white">{{ payrollData.organizer }}</span>
+                    <span class="text-space-gray-400">Payroll ID:</span>
+                    <span class="ml-2 text-white">{{ payrollData.payroll_id }}</span>
                   </div>
                   <div>
-                    <span class="text-space-gray-400">Duration:</span>
-                    <span class="ml-2 text-white">{{ formatDuration(payrollData.total_duration_minutes) }}</span>
+                    <span class="text-space-gray-400">Created:</span>
+                    <span class="ml-2 text-white">{{ formatDate(payrollData.created_at) }}</span>
                   </div>
                   <div>
                     <span class="text-space-gray-400">Participants:</span>
-                    <span class="ml-2 text-white">{{ payrollData.total_participants }}</span>
+                    <span class="ml-2 text-white">{{ payrollData.participants?.length || 0 }}</span>
                   </div>
                 </div>
               </div>
@@ -285,27 +285,23 @@
                   </div>
                   <div>
                     <span class="text-space-gray-400">Average Payout:</span>
-                    <span class="ml-2 text-blue-400 font-mono">{{ formatCurrency(payrollData.statistics.average_payout_auec) }} aUEC</span>
+                    <span class="ml-2 text-blue-400 font-mono">{{ payrollData.participants?.length ? formatCurrency(payrollData.total_payout / payrollData.participants.length) : '0' }} aUEC</span>
                   </div>
                   <div>
                     <span class="text-space-gray-400">Total Participation:</span>
-                    <span class="ml-2 text-white">{{ formatDuration(payrollData.statistics.total_participation_minutes) }}</span>
+                    <span class="ml-2 text-white">{{ payrollData.participants ? formatDuration(payrollData.participants.reduce((sum, p) => sum + p.duration_minutes, 0)) : '0m' }}</span>
                   </div>
                   <div>
-                    <span class="text-space-gray-400">Calculated By:</span>
-                    <span class="ml-2 text-white">{{ payrollData.payroll.calculated_by_name }}</span>
+                    <span class="text-space-gray-400">Status:</span>
+                    <span class="ml-2 text-green-400">Finalized</span>
                   </div>
-                  <div>
-                    <span class="text-space-gray-400">Total SCU Collected:</span>
-                    <span class="ml-2 text-orange-400 font-mono">{{ payrollData.statistics.total_scu_collected || 'N/A' }}</span>
-                  </div>
-                  <div v-if="payrollData.statistics.ore_breakdown" class="col-span-2">
+                  <div v-if="payrollData.ore_quantities && Object.keys(payrollData.ore_quantities).length > 0" class="col-span-2">
                     <span class="text-space-gray-400 mb-3 block">Ore Breakdown:</span>
                     <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                       <div
-                        v-for="(details, ore) in payrollData.statistics.ore_breakdown"
+                        v-for="(quantity, ore) in payrollData.ore_quantities"
                         :key="ore"
-                        class="bg-space-gray-700 rounded-lg p-4 border border-space-gray-600"
+                        class="bg-space-gray-600 rounded-lg p-4 border border-space-gray-500"
                       >
                         <div class="flex justify-between items-center mb-2">
                           <h4 class="text-white font-bold text-lg">{{ ore.toUpperCase() }}</h4>
@@ -314,15 +310,15 @@
                         <div class="space-y-1">
                           <div class="flex justify-between">
                             <span class="text-space-gray-400 text-sm">Quantity:</span>
-                            <span class="text-blue-400 font-mono">{{ formatCurrency(details.quantity) }}</span>
+                            <span class="text-blue-400 font-mono">{{ formatCurrency(quantity) }}</span>
                           </div>
                           <div class="flex justify-between">
                             <span class="text-space-gray-400 text-sm">Price per unit:</span>
-                            <span class="text-purple-400 font-mono">{{ formatCurrency(details.price_per_scu) }} aUEC</span>
+                            <span class="text-purple-400 font-mono">{{ formatCurrency(payrollData.custom_prices[ore] || 0) }} aUEC</span>
                           </div>
-                          <div class="flex justify-between pt-2 border-t border-space-gray-600">
+                          <div class="flex justify-between pt-2 border-t border-space-gray-500">
                             <span class="text-space-gray-400 text-sm font-medium">Total Value:</span>
-                            <span class="text-green-400 font-mono font-bold">{{ formatCurrency(details.total_value) }} aUEC</span>
+                            <span class="text-green-400 font-mono font-bold">{{ formatCurrency((quantity * (payrollData.custom_prices[ore] || 0))) }} aUEC</span>
                           </div>
                         </div>
                       </div>
@@ -347,18 +343,18 @@
                       </tr>
                     </thead>
                     <tbody class="divide-y divide-space-gray-600">
-                      <tr 
-                        v-for="(payout, index) in payrollData.payouts" 
-                        :key="payout.username"
+                      <tr
+                        v-for="(participant, index) in payrollData.participants"
+                        :key="participant.username"
                         class="hover:bg-space-gray-600"
                       >
                         <td class="py-2 px-3 text-space-gray-400">{{ index + 1 }}</td>
-                        <td class="py-2 px-3 text-white font-medium">{{ payout.username }}</td>
-                        <td class="py-2 px-3 text-center text-space-gray-300">{{ payout.participation_minutes }}m</td>
-                        <td class="py-2 px-3 text-right text-blue-400 font-mono">{{ formatCurrency(payout.base_payout_auec) }}</td>
-                        <td class="py-2 px-3 text-right text-green-400 font-mono font-semibold">{{ formatCurrency(payout.final_payout_auec) }}</td>
+                        <td class="py-2 px-3 text-white font-medium">{{ participant.display_name || participant.username }}</td>
+                        <td class="py-2 px-3 text-center text-space-gray-300">{{ participant.duration_minutes }}m</td>
+                        <td class="py-2 px-3 text-right text-blue-400 font-mono">{{ formatCurrency(participant.payout) }}</td>
+                        <td class="py-2 px-3 text-right text-green-400 font-mono font-semibold">{{ formatCurrency(participant.payout) }}</td>
                         <td class="py-2 px-3 text-center">
-                          <span v-if="payout.is_donor" class="text-xs bg-purple-500 text-white px-2 py-1 rounded">Donor</span>
+                          <span v-if="participant.is_donating" class="text-xs bg-purple-500 text-white px-2 py-1 rounded">Donor</span>
                           <span v-else class="text-xs text-space-gray-400">Standard</span>
                         </td>
                       </tr>
