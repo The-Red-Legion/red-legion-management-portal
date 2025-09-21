@@ -252,25 +252,25 @@
               <!-- Event Overview -->
               <div class="bg-space-gray-700 rounded-lg p-4">
                 <h3 class="text-lg font-semibold text-white mb-3">
-                  <span class="mr-2">{{ payrollData.event.event_type === 'mining' ? '⛏️' : '🔧' }}</span>
-                  {{ payrollData.event.event_name }}
+                  <span class="mr-2">{{ payrollData.event_type === 'mining' ? '⛏️' : '🔧' }}</span>
+                  {{ payrollData.event_name }}
                 </h3>
                 <div class="grid grid-cols-2 gap-4 text-sm">
                   <div>
                     <span class="text-space-gray-400">Event ID:</span>
-                    <code class="ml-2 text-yellow-400">{{ payrollData.event.event_id }}</code>
+                    <code class="ml-2 text-yellow-400">{{ payrollData.event_id }}</code>
                   </div>
                   <div>
                     <span class="text-space-gray-400">Organizer:</span>
-                    <span class="ml-2 text-white">{{ payrollData.event.organizer_name }}</span>
+                    <span class="ml-2 text-white">{{ payrollData.organizer }}</span>
                   </div>
                   <div>
                     <span class="text-space-gray-400">Duration:</span>
-                    <span class="ml-2 text-white">{{ formatDuration(payrollData.event.total_duration_minutes) }}</span>
+                    <span class="ml-2 text-white">{{ formatDuration(payrollData.total_duration_minutes) }}</span>
                   </div>
                   <div>
                     <span class="text-space-gray-400">Participants:</span>
-                    <span class="ml-2 text-white">{{ payrollData.event.total_participants }}</span>
+                    <span class="ml-2 text-white">{{ payrollData.total_participants }}</span>
                   </div>
                 </div>
               </div>
