@@ -1,10 +1,17 @@
 """Payroll calculation and management endpoints."""
 
 from fastapi import APIRouter, HTTPException
+from fastapi.responses import Response
 from typing import Dict, List, Optional, Any
 import logging
 import json
+import io
 from datetime import datetime
+from reportlab.lib.pagesizes import letter, A4
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib import colors
+from reportlab.lib.units import inch
 
 from database import get_db_pool
 from validation import validate_event_id, PayrollCalculateRequest
@@ -121,6 +128,143 @@ async def get_payroll_summary_endpoint(event_id: str):
     except Exception as e:
         logger.error(f"Error getting payroll summary for {event_id}: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to get payroll summary: {str(e)}")
+
+@router.get("/payroll/{event_id}/pdf")
+@router.get("/mgmt/api/payroll/{event_id}/pdf")
+async def generate_payroll_pdf(event_id: str):
+    """Generate PDF report for payroll data."""
+    event_id = validate_event_id(event_id)
+
+    try:
+        pool = await get_db_pool()
+        if pool is None:
+            raise HTTPException(status_code=503, detail="Database not available")
+
+        payroll_service = PayrollService(pool)
+        data = await payroll_service.export_payroll(event_id)
+
+        if not data["success"]:
+            raise HTTPException(status_code=404, detail=data.get("error", "Payroll not found"))
+
+        # Create PDF in memory
+        buffer = io.BytesIO()
+        doc = SimpleDocTemplate(buffer, pagesize=A4,
+                              topMargin=0.5*inch, bottomMargin=0.5*inch,
+                              leftMargin=0.5*inch, rightMargin=0.5*inch)
+
+        # Build PDF content
+        story = []
+        styles = getSampleStyleSheet()
+
+        # Title
+        title_style = ParagraphStyle(
+            'CustomTitle',
+            parent=styles['Heading1'],
+            fontSize=20,
+            spaceAfter=30,
+            textColor=colors.black,
+            alignment=1  # Center alignment
+        )
+        story.append(Paragraph(f"Payroll Summary - Event {event_id}", title_style))
+        story.append(Spacer(1, 20))
+
+        # Event info section
+        info_data = [
+            ['Event ID:', data['event_id']],
+            ['Payroll ID:', data['payroll_id']],
+            ['Total Participants:', str(len(data['participants']))],
+            ['Total Payout:', f"{data['total_payout']:,.0f} aUEC"],
+            ['Created:', data['created_at'][:10]]  # Just date part
+        ]
+
+        info_table = Table(info_data, colWidths=[2*inch, 3*inch])
+        info_table.setStyle(TableStyle([
+            ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+            ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
+            ('FONTNAME', (1, 0), (1, -1), 'Helvetica'),
+            ('FONTSIZE', (0, 0), (-1, -1), 12),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+        ]))
+        story.append(info_table)
+        story.append(Spacer(1, 30))
+
+        # Ore breakdown section (if available)
+        if data.get('ore_quantities') and any(qty > 0 for qty in data['ore_quantities'].values()):
+            story.append(Paragraph("Ore Breakdown", styles['Heading2']))
+            story.append(Spacer(1, 12))
+
+            ore_data = [['Ore Type', 'Quantity (SCU)', 'Price per Unit', 'Total Value']]
+            for ore, quantity in data['ore_quantities'].items():
+                if quantity > 0:
+                    price = data.get('custom_prices', {}).get(ore, 0)
+                    total_value = quantity * price
+                    ore_data.append([
+                        ore.upper(),
+                        f"{quantity:,.0f}",
+                        f"{price:,.0f} aUEC",
+                        f"{total_value:,.0f} aUEC"
+                    ])
+
+            ore_table = Table(ore_data, colWidths=[1.5*inch, 1.5*inch, 1.5*inch, 1.5*inch])
+            ore_table.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+                ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
+                ('FONTSIZE', (0, 0), (-1, -1), 10),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+                ('GRID', (0, 0), (-1, -1), 1, colors.black)
+            ]))
+            story.append(ore_table)
+            story.append(Spacer(1, 30))
+
+        # Participants section
+        story.append(Paragraph("Individual Payouts", styles['Heading2']))
+        story.append(Spacer(1, 12))
+
+        # Participants table
+        participants_data = [['#', 'Participant', 'Time (min)', 'Payout (aUEC)', 'Status']]
+        for i, participant in enumerate(data['participants'], 1):
+            status = "Donor" if participant.get('is_donating', False) else "Standard"
+            participants_data.append([
+                str(i),
+                participant.get('display_name', participant['username']),
+                str(participant['duration_minutes']),
+                f"{participant['payout']:,.0f}",
+                status
+            ])
+
+        participants_table = Table(participants_data, colWidths=[0.5*inch, 2*inch, 1*inch, 1.5*inch, 1*inch])
+        participants_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
+            ('FONTSIZE', (0, 0), (-1, -1), 9),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+            ('GRID', (0, 0), (-1, -1), 1, colors.black),
+            ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.lightgrey])
+        ]))
+        story.append(participants_table)
+
+        # Build PDF
+        doc.build(story)
+        buffer.seek(0)
+
+        # Return PDF as response
+        return Response(
+            content=buffer.getvalue(),
+            media_type="application/pdf",
+            headers={"Content-Disposition": f"attachment; filename=payroll_{event_id}.pdf"}
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error generating PDF for {event_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to generate PDF: {str(e)}")
 
 def generate_mock_payroll_calculation(event_id: str, request: PayrollCalculateRequest) -> Dict[str, Any]:
     """Generate mock payroll calculation for testing donations."""
