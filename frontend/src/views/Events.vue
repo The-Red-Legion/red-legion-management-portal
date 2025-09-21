@@ -709,41 +709,88 @@ export default {
 
     const selectedAdditionalChannels = ref([])
 
-    // Computed properties
-    const scheduledEvents = computed(() =>
-      allEvents.value.filter(event => ['planned', 'scheduled'].includes(event.event_status))
-    )
+    // Computed properties - Completely rebuilt filtering logic
+    const scheduledEvents = computed(() => {
+      console.log('🔍 Filtering scheduled events from:', allEvents.value.length, 'total events')
+      const scheduled = allEvents.value.filter(event => {
+        const isScheduled = ['planned', 'scheduled'].includes(event.event_status)
+        if (isScheduled) {
+          console.log('📅 Scheduled event found:', event.event_id, event.event_name)
+        }
+        return isScheduled
+      })
+      console.log('📊 Scheduled events result:', scheduled.length)
+      return scheduled
+    })
 
-    const liveEvents = computed(() =>
-      allEvents.value.filter(event =>
-        event.event_status === 'live' &&
-        (event.status === 'open' || event.status === 'active') &&
-        event.ended_at === null
-      )
-    )
+    const liveEvents = computed(() => {
+      console.log('🔍 Filtering live events from:', allEvents.value.length, 'total events')
+      const live = allEvents.value.filter(event => {
+        console.log(`🔎 Checking event ${event.event_id}:`, {
+          event_status: event.event_status,
+          status: event.status,
+          ended_at: event.ended_at
+        })
 
-    const recentEvents = computed(() =>
-      allEvents.value.filter(event =>
-        event.ended_at !== null ||
-        event.status === 'closed' ||
-        event.status === 'completed'
-      ).slice(0, 10)
-    )
+        // Super explicit filtering logic
+        const hasLiveStatus = event.event_status === 'live'
+        const hasOpenStatus = event.status === 'open' || event.status === 'active'
+        const notEnded = event.ended_at === null || event.ended_at === undefined
+
+        const isLive = hasLiveStatus && hasOpenStatus && notEnded
+
+        if (isLive) {
+          console.log('🔴 LIVE EVENT FOUND:', event.event_id, event.event_name)
+        } else {
+          console.log('❌ Not live:', event.event_id, {hasLiveStatus, hasOpenStatus, notEnded})
+        }
+
+        return isLive
+      })
+      console.log('📊 Live events result:', live.length)
+      return live
+    })
+
+    const recentEvents = computed(() => {
+      console.log('🔍 Filtering recent events from:', allEvents.value.length, 'total events')
+      const recent = allEvents.value.filter(event => {
+        const isRecent = event.ended_at !== null ||
+                        event.status === 'closed' ||
+                        event.status === 'completed'
+        if (isRecent) {
+          console.log('✅ Recent event found:', event.event_id, event.event_name)
+        }
+        return isRecent
+      }).slice(0, 10)
+      console.log('📊 Recent events result:', recent.length)
+      return recent
+    })
 
     // Methods
     const loadEvents = async () => {
       loading.value = true
+      console.log('🔄 Loading events from API...')
       try {
         // Load all events
         const eventsResponse = await api.get('/events')
+        console.log('📡 Raw API response:', eventsResponse)
+
         // Handle both array response and object with events property
         if (Array.isArray(eventsResponse)) {
           allEvents.value = eventsResponse
+          console.log('✅ Loaded events (array format):', eventsResponse.length, 'events')
         } else if (eventsResponse && Array.isArray(eventsResponse.events)) {
           allEvents.value = eventsResponse.events
+          console.log('✅ Loaded events (object format):', eventsResponse.events.length, 'events')
         } else {
           allEvents.value = []
+          console.log('❌ No events found or invalid format')
         }
+
+        console.log('💾 All events stored:', allEvents.value)
+        allEvents.value.forEach(event => {
+          console.log(`📋 Event: ${event.event_id} | ${event.event_name} | status=${event.status} | event_status=${event.event_status} | ended_at=${event.ended_at}`)
+        })
 
         // Load scheduled events specifically
         try {
