@@ -113,7 +113,7 @@ class PayrollService:
                         "username": participant['username'],
                         "display_name": participant['display_name'],
                         "duration_minutes": participant['duration_minutes'],
-                        "payout": payout,
+                        "payout": round(payout),  # Round to whole numbers as requested
                         "is_donating": is_donating
                     })
 

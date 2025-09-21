@@ -791,6 +791,29 @@ export default {
         console.log('🔍 Debug - Donating users being sent (as strings):', donatingUsers)
         console.log('🔍 Debug - Event participants:', eventParticipants.value)
         console.log('🔍 Debug - Participant user_ids:', eventParticipants.value.map(p => ({ username: p.username, user_id: p.user_id, user_id_type: typeof p.user_id, user_id_string: String(p.user_id) })))
+
+        // Debug: Check for user ID mismatches
+        const donationKeys = Object.keys(participantDonations.value)
+        const participantUserIds = eventParticipants.value.map(p => String(p.user_id))
+        const missingFromParticipants = donationKeys.filter(id => !participantUserIds.includes(id))
+        const missingFromDonations = participantUserIds.filter(id => !donationKeys.includes(id))
+
+        console.log('🔍 Debug - User IDs in donations but not in participants:', missingFromParticipants)
+        console.log('🔍 Debug - User IDs in participants but not in donations:', missingFromDonations)
+
+        if (missingFromParticipants.length > 0) {
+          console.warn('⚠️ WARNING: Donation data contains stale user IDs that no longer exist in participants!')
+          console.warn('⚠️ This will cause donations to be ignored. Refreshing donation data...')
+
+          // Clear stale donation data and rebuild it
+          participantDonations.value = {}
+          eventParticipants.value.forEach(participant => {
+            participantDonations.value[participant.user_id] = false
+          })
+
+          console.log('✅ Donation data refreshed. Please try again.')
+          return
+        }
         
         // Calculate payroll
         const result = await apiService.calculatePayroll(
