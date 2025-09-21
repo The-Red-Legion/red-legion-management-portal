@@ -74,7 +74,7 @@ class PayrollService:
                 for participant in participants:
                     user_id_str = str(participant['user_id'])
                     username = participant['username']
-                    is_donating = donating_users and username in donating_users
+                    is_donating = bool(donating_users and username in donating_users)
 
                     if is_donating:
                         donating_share_total += base_shares[user_id_str]
@@ -101,7 +101,7 @@ class PayrollService:
                 for participant in participants:
                     user_id_str = str(participant['user_id'])
                     username = participant['username']
-                    is_donating = donating_users and username in donating_users
+                    is_donating = bool(donating_users and username in donating_users)
 
                     if is_donating:
                         payout = 0.0  # Donating users get 0
