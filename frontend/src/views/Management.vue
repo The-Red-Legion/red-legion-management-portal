@@ -99,9 +99,9 @@
                     <th class="text-left py-3 px-2 text-white font-medium whitespace-nowrap">Type</th>
                     <th class="text-left py-3 px-2 text-white font-medium whitespace-nowrap">Name</th>
                     <th class="text-left py-3 px-2 text-white font-medium whitespace-nowrap">Organizer</th>
-                    <th class="text-left py-3 px-2 text-white font-medium whitespace-nowrap">Status</th>
-                    <th class="text-left py-3 px-2 text-white font-medium whitespace-nowrap">Started</th>
-                    <th class="text-left py-3 px-2 text-white font-medium whitespace-nowrap">Ended</th>
+                    <th class="text-left py-3 px-2 text-white font-medium whitespace-nowrap">Event Status</th>
+                    <th class="text-left py-3 px-2 text-white font-medium whitespace-nowrap">Payroll Status</th>
+                    <th class="text-left py-3 px-2 text-white font-medium whitespace-nowrap">Event Date</th>
                     <th class="text-center py-3 px-2 text-white font-medium whitespace-nowrap">Participants</th>
                     <th class="text-center py-3 px-2 text-white font-medium whitespace-nowrap">Payroll</th>
                     <th class="text-right py-3 px-2 text-white font-medium whitespace-nowrap">Actions</th>
@@ -150,11 +150,16 @@
                         {{ event.status === 'open' ? '🟢 Open' : '🔴 Closed' }}
                       </span>
                     </td>
-                    <td class="py-3 px-2 text-space-gray-300 text-sm whitespace-nowrap">
-                      {{ formatDateTime(event.started_at) }}
+                    <td class="py-3 px-2 whitespace-nowrap">
+                      <span :class="[
+                        'px-2 py-1 rounded-full text-xs font-medium inline-block',
+                        event.payroll_calculated ? 'bg-blue-500 text-blue-100' : 'bg-gray-500 text-gray-100'
+                      ]">
+                        {{ event.payroll_calculated ? '✅ Finalized' : '⏳ Pending' }}
+                      </span>
                     </td>
                     <td class="py-3 px-2 text-space-gray-300 text-sm whitespace-nowrap">
-                      {{ event.ended_at ? formatDateTime(event.ended_at) : 'N/A' }}
+                      {{ formatDate(event.started_at) }}
                     </td>
                     <td class="py-3 px-2 text-center whitespace-nowrap">
                       <span class="text-blue-400 font-mono">
@@ -468,6 +473,21 @@ export default {
       }
     }
 
+    const formatDate = (dateString) => {
+      if (!dateString) return 'N/A'
+      try {
+        const date = new Date(dateString)
+        return date.toLocaleDateString('en-US', {
+          timeZone: 'UTC',
+          year: 'numeric',
+          month: '2-digit',
+          day: '2-digit'
+        })
+      } catch (error) {
+        return 'Invalid Date'
+      }
+    }
+
     const formatDuration = (minutes) => {
       if (!minutes) return '0m'
       const hours = Math.floor(minutes / 60)
@@ -658,6 +678,7 @@ export default {
       showDeleteModal,
       eventToDelete,
       formatDateTime,
+      formatDate,
       formatDuration,
       formatCurrency,
       refreshEvents,
