@@ -109,6 +109,11 @@ export const apiService = {
   },
 
   // Event management
+  async createEvent(eventData) {
+    const response = await api.post('/events/create', eventData)
+    return response.data
+  },
+
   async closeEvent(eventId) {
     const response = await api.post(`/events/${eventId}/close`)
     return response.data
