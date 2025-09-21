@@ -234,7 +234,7 @@
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
                 </svg>
-                <span>{{ exportingPDF ? 'Exporting...' : 'Export PDF' }}</span>
+                <span>{{ exportingPDF ? 'Exporting...' : 'Export Data' }}</span>
               </button>
               <button @click="showPayrollModal = false" class="text-space-gray-400 hover:text-white transition-colors">
                 <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -300,6 +300,7 @@
                     <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                       <div
                         v-for="(quantity, ore) in payrollData.ore_quantities"
+                        v-if="quantity > 0"
                         :key="ore"
                         class="bg-space-gray-600 rounded-lg p-4 border border-space-gray-500"
                       >
@@ -624,20 +625,21 @@ export default {
       exportingPDF.value = true
       try {
         const data = await apiService.exportPayroll(payrollData.value.event_id)
-        
-        // Create blob from the response data
-        const blob = new Blob([JSON.stringify(data)], { type: 'application/pdf' })
+
+        // Create formatted JSON for download
+        const formattedData = JSON.stringify(data, null, 2)
+        const blob = new Blob([formattedData], { type: 'application/json' })
         const url = window.URL.createObjectURL(blob)
         const a = document.createElement('a')
         a.href = url
-        a.download = `payroll_${payrollData.value.event_id}.pdf`
+        a.download = `payroll_${payrollData.value.event_id}.json`
         document.body.appendChild(a)
         a.click()
         document.body.removeChild(a)
         window.URL.revokeObjectURL(url)
       } catch (error) {
-        console.error('Failed to export PDF:', error)
-        alert('Failed to export PDF. Please try again.')
+        console.error('Failed to export payroll data:', error)
+        alert('Failed to export payroll data. Please try again.')
       } finally {
         exportingPDF.value = false
       }
