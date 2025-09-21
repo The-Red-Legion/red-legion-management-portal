@@ -69,8 +69,9 @@
     <!-- Step Content -->
     <div class="min-h-96">
       <!-- Step 1: Event Selection -->
-      <EventList 
-        v-if="currentStep === 1" 
+      <EventList
+        v-if="currentStep === 1"
+        :payroll-mode="true"
         @event-selected="handleEventSelected"
       />
 

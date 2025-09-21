@@ -181,6 +181,12 @@ import { apiService } from '../api.js'
 
 export default {
   name: 'EventList',
+  props: {
+    payrollMode: {
+      type: Boolean,
+      default: false
+    }
+  },
   emits: ['event-selected'],
   setup(props, { emit }) {
     const route = useRoute()
@@ -328,12 +334,21 @@ export default {
       }
     })
 
-    // Computed property to filter events by type
+    // Computed property to filter events by type and payroll status
     const filteredEvents = computed(() => {
-      if (eventTypeFilter.value === 'all') {
-        return events.value
+      let filtered = events.value
+
+      // Filter by event type
+      if (eventTypeFilter.value !== 'all') {
+        filtered = filtered.filter(event => event.event_type === eventTypeFilter.value)
       }
-      return events.value.filter(event => event.event_type === eventTypeFilter.value)
+
+      // In payroll mode, exclude events that already have finalized payrolls
+      if (props.payrollMode) {
+        filtered = filtered.filter(event => !event.payroll_calculated)
+      }
+
+      return filtered
     })
 
     return {
