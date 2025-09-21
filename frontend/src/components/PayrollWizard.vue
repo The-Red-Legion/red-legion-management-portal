@@ -678,11 +678,17 @@ export default {
       }
     }
     
-    // Get effective price for display (location-specific or default)
+    // Get effective price for display (custom, location-specific, or default)
     const getEffectivePrice = (material) => {
+      // Use custom price if custom prices are enabled and the material has a custom price
+      if (useCustomPrices.value && customPrices.value[material]) {
+        return customPrices.value[material]
+      }
+      // Use location-specific price if available
       if (selectedLocationId.value && defaultPrices.value[material]) {
         return defaultPrices.value[material]
       }
+      // Fall back to default price
       return defaultPrices.value[material] || 0
     }
 
