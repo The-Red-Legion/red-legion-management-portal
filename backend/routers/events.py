@@ -209,6 +209,61 @@ async def create_event(request: EventCreationRequest):
         logger.error(f"Error creating event: {e}")
         raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
 
+@router.post("/events/{event_id}/start")
+@router.post("/mgmt/api/events/{event_id}/start")
+async def start_event(event_id: str):
+    """Start a scheduled event manually."""
+    event_id = validate_event_id(event_id)
+
+    try:
+        pool = await get_db_pool()
+        if pool is None:
+            return {
+                "success": False,
+                "message": "Database not available",
+                "event_id": event_id
+            }
+
+        async with pool.acquire() as conn:
+            # Check if event exists and is scheduled
+            event = await conn.fetchrow("""
+                SELECT event_id, event_name, organizer_name, status, event_status
+                FROM events WHERE event_id = $1
+            """, event_id)
+
+            if not event:
+                raise HTTPException(status_code=404, detail=f"Event {event_id} not found")
+
+            if event['status'] != 'scheduled' and event['event_status'] != 'scheduled':
+                raise HTTPException(status_code=400, detail=f"Event {event_id} is not in scheduled status")
+
+            # Update event to live status
+            await conn.execute("""
+                UPDATE events
+                SET status = 'open', event_status = 'live', started_at = NOW()
+                WHERE event_id = $1
+            """, event_id)
+
+            # Get updated event data
+            updated_event = await conn.fetchrow("""
+                SELECT event_id, event_name, organizer_name, started_at, status, event_status
+                FROM events WHERE event_id = $1
+            """, event_id)
+
+            logger.info(f"✅ Event {event_id} started manually")
+
+            return {
+                "success": True,
+                "message": f"Event {event_id} started successfully",
+                "event": dict(updated_event)
+            }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error starting event {event_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+
 @router.post("/events/{event_id}/close")
 @router.post("/mgmt/api/events/{event_id}/close")
 async def close_event(event_id: str):
