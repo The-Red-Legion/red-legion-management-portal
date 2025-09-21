@@ -710,16 +710,24 @@ export default {
     const selectedAdditionalChannels = ref([])
 
     // Computed properties
-    const scheduledEvents = computed(() => 
+    const scheduledEvents = computed(() =>
       allEvents.value.filter(event => ['planned', 'scheduled'].includes(event.event_status))
     )
 
-    const liveEvents = computed(() => 
-      allEvents.value.filter(event => event.ended_at === null)
+    const liveEvents = computed(() =>
+      allEvents.value.filter(event =>
+        event.event_status === 'live' &&
+        (event.status === 'open' || event.status === 'active') &&
+        event.ended_at === null
+      )
     )
 
-    const recentEvents = computed(() => 
-      allEvents.value.filter(event => event.ended_at !== null).slice(0, 10)
+    const recentEvents = computed(() =>
+      allEvents.value.filter(event =>
+        event.ended_at !== null ||
+        event.status === 'closed' ||
+        event.status === 'completed'
+      ).slice(0, 10)
     )
 
     // Methods
