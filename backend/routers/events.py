@@ -31,8 +31,9 @@ async def get_events(request: Request):
                     e.status, e.started_at, e.ended_at, e.created_at, e.updated_at,
                     e.total_participants, e.total_duration_minutes,
                     e.location_notes, e.description as additional_notes,
-                    false as payroll_calculated
+                    CASE WHEN p.payroll_id IS NOT NULL THEN true ELSE false END as payroll_calculated
                 FROM events e
+                LEFT JOIN payrolls p ON e.event_id = p.event_id
                 ORDER BY e.created_at DESC
             """)
 
