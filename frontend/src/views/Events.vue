@@ -744,10 +744,13 @@ export default {
         const eventsResponse = await api.get('/events')
         console.log('📡 Raw API response:', eventsResponse)
 
-        // Handle both array response and object with events property
-        if (Array.isArray(eventsResponse)) {
+        // Handle axios response format - data is in eventsResponse.data
+        if (Array.isArray(eventsResponse.data)) {
+          allEvents.value = eventsResponse.data
+          console.log('✅ Loaded events (axios data format):', eventsResponse.data.length, 'events')
+        } else if (Array.isArray(eventsResponse)) {
           allEvents.value = eventsResponse
-          console.log('✅ Loaded events (array format):', eventsResponse.length, 'events')
+          console.log('✅ Loaded events (direct array format):', eventsResponse.length, 'events')
         } else if (eventsResponse && Array.isArray(eventsResponse.events)) {
           allEvents.value = eventsResponse.events
           console.log('✅ Loaded events (object format):', eventsResponse.events.length, 'events')
