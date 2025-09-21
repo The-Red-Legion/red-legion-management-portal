@@ -709,61 +709,30 @@ export default {
 
     const selectedAdditionalChannels = ref([])
 
-    // Computed properties - Completely rebuilt filtering logic
+    // SIMPLE FILTERING LOGIC - NO OVERTHINKING
     const scheduledEvents = computed(() => {
-      console.log('🔍 Filtering scheduled events from:', allEvents.value.length, 'total events')
-      const scheduled = allEvents.value.filter(event => {
-        const isScheduled = ['planned', 'scheduled'].includes(event.event_status)
-        if (isScheduled) {
-          console.log('📅 Scheduled event found:', event.event_id, event.event_name)
-        }
-        return isScheduled
-      })
-      console.log('📊 Scheduled events result:', scheduled.length)
-      return scheduled
+      // Scheduled = has future start time OR status is scheduled/planned
+      return allEvents.value.filter(event =>
+        event.status === 'scheduled' ||
+        event.event_status === 'scheduled' ||
+        event.event_status === 'planned'
+      )
     })
 
     const liveEvents = computed(() => {
-      console.log('🔍 Filtering live events from:', allEvents.value.length, 'total events')
-      const live = allEvents.value.filter(event => {
-        console.log(`🔎 Checking event ${event.event_id}:`, {
-          event_status: event.event_status,
-          status: event.status,
-          ended_at: event.ended_at
-        })
-
-        // Super explicit filtering logic
-        const hasLiveStatus = event.event_status === 'live'
-        const hasOpenStatus = event.status === 'open' || event.status === 'active'
-        const notEnded = event.ended_at === null || event.ended_at === undefined
-
-        const isLive = hasLiveStatus && hasOpenStatus && notEnded
-
-        if (isLive) {
-          console.log('🔴 LIVE EVENT FOUND:', event.event_id, event.event_name)
-        } else {
-          console.log('❌ Not live:', event.event_id, {hasLiveStatus, hasOpenStatus, notEnded})
-        }
-
-        return isLive
-      })
-      console.log('📊 Live events result:', live.length)
-      return live
+      // Live = status is open and not ended
+      return allEvents.value.filter(event =>
+        event.status === 'open' &&
+        (event.ended_at === null || event.ended_at === undefined)
+      )
     })
 
     const recentEvents = computed(() => {
-      console.log('🔍 Filtering recent events from:', allEvents.value.length, 'total events')
-      const recent = allEvents.value.filter(event => {
-        const isRecent = event.ended_at !== null ||
-                        event.status === 'closed' ||
-                        event.status === 'completed'
-        if (isRecent) {
-          console.log('✅ Recent event found:', event.event_id, event.event_name)
-        }
-        return isRecent
-      }).slice(0, 10)
-      console.log('📊 Recent events result:', recent.length)
-      return recent
+      // Recent = ended or closed
+      return allEvents.value.filter(event =>
+        event.status === 'closed' ||
+        event.ended_at !== null
+      ).slice(0, 10)
     })
 
     // Methods
