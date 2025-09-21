@@ -264,6 +264,70 @@ async def start_event(event_id: str):
         logger.error(f"Error starting event {event_id}: {e}")
         raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
 
+@router.get("/events/{event_id}/live-metrics")
+@router.get("/mgmt/api/events/{event_id}/live-metrics")
+async def get_live_metrics(event_id: str):
+    """Get live metrics for an active event."""
+    event_id = validate_event_id(event_id)
+
+    try:
+        pool = await get_db_pool()
+        if pool is None:
+            raise HTTPException(status_code=500, detail="Database not available")
+
+        async with pool.acquire() as conn:
+            # Check if event exists and is live
+            event = await conn.fetchrow("""
+                SELECT event_id, event_name, organizer_name, status, event_status, started_at
+                FROM events WHERE event_id = $1
+            """, event_id)
+
+            if not event:
+                raise HTTPException(status_code=404, detail=f"Event {event_id} not found")
+
+            if event['status'] != 'open' or event['event_status'] != 'live':
+                raise HTTPException(status_code=400, detail=f"Event {event_id} is not live")
+
+            # Get current participants count
+            participants = await conn.fetch("""
+                SELECT COUNT(*) as total_participants,
+                       COALESCE(SUM(duration_minutes), 0) as total_duration
+                FROM participation
+                WHERE event_id = $1
+            """, event_id)
+
+            participant_count = participants[0]['total_participants'] if participants else 0
+            total_duration = participants[0]['total_duration'] if participants else 0
+
+            # Calculate event duration
+            from datetime import datetime, timezone
+            if event['started_at']:
+                start_time = event['started_at']
+                if start_time.tzinfo is None:
+                    start_time = start_time.replace(tzinfo=timezone.utc)
+                duration_minutes = int((datetime.now(timezone.utc) - start_time).total_seconds() / 60)
+            else:
+                duration_minutes = 0
+
+            return {
+                "event_id": event_id,
+                "event_name": event['event_name'],
+                "organizer_name": event['organizer_name'],
+                "status": event['status'],
+                "event_status": event['event_status'],
+                "started_at": event['started_at'].isoformat() if event['started_at'] else None,
+                "duration_minutes": duration_minutes,
+                "participant_count": participant_count,
+                "total_participant_minutes": total_duration,
+                "is_live": True
+            }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting live metrics for event {event_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+
 @router.post("/events/{event_id}/close")
 @router.post("/mgmt/api/events/{event_id}/close")
 async def close_event(event_id: str):
